@@ -120,6 +120,6 @@ pdf.js (Apache-2.0) renders the page. It's the one runtime dependency, and it's 
 3. Geometry: glyph boxes, words and lines.
 4. Reference labeller (PyMuPDF plus pdfplumber consensus) and the constructed garble set.
 5. The verdict and the dev scoring loop, then freeze.
-6. Held-out run and the competitor benchmark.
+6. Held-out run and the competitor benchmark. Because the consensus keeps only words both reference tools get right (chunk 4 found pdfplumber running space-less lines together and re-sorting overlapping glyphs), the benchmark also reports, on disputed words, which tool wordbox agrees with.
 7. WebAssembly build and the side-by-side demo with pdf.js.
 8. README, then the write-up on sharadbapat.com (following WRITING.md).

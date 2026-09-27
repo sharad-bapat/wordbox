@@ -1,0 +1,37 @@
+# chunk 4 reference (tools/reference.py, PyMuPDF 1.24.9 + pdfplumber 0.11.9) on dev, 2026-09-27
+
+files 659 (errors 0), pages 9722 (errors 60, empty 117)
+reference words 3267791  (PyMuPDF 3443353, pdfplumber 3389185, same text but placed apart 6116)
+word-level agreement: 94.90% of the larger tool's words
+pages with >= 95% agreement: 8239 of 9605 (85.78%); disputed 1366
+
+seeded sample of 12 disputed pages (agreement, file, page, pymupdf, pdfplumber, reference, moved):
+   (0.018, '001389.pdf', 15, 113, 66, 2, 0)
+   (0.082, '001494.pdf', 19, 49, 244, 20, 1)
+   (0.174, '001038.pdf', 44, 19, 23, 4, 0)
+   (0.28, '001680.pdf', 14, 628, 214, 176, 0)
+   (0.284, '001375.pdf', 5, 540, 542, 154, 170)
+   (0.622, '001045.pdf', 7, 339, 275, 211, 0)
+   (0.698, '001644.pdf', 10, 189, 156, 132, 0)
+   (0.744, '001062.pdf', 8, 38, 39, 29, 0)
+   (0.787, '001099.pdf', 6, 856, 705, 674, 0)
+   (0.881, '001390.pdf', 27, 143, 134, 126, 0)
+   (0.931, '001686.pdf', 6, 176, 189, 176, 0)
+   (0.935, '001040.pdf', 1, 782, 756, 731, 0)
+
+# page errors: all 60 are 001273.pdf, where pdfplumber finds fewer pages than PyMuPDF
+
+# hand check of disputed pages
+- 001045 p6, TOC dot leaders: PyMuPDF splits '7-29' from its dots, pdfplumber joins them ('7-29.....'). A word-boundary convention; both dropped by the consensus.
+- 001680 p14, 001099 p6: word gaps are positional (no space glyphs). pdfplumber's default 3 pt tolerance runs whole lines into one 'word' ('thesmokenumberconcentrationdecreasedbyafactorof24...'); PyMuPDF splits them. The largest source of disagreement; a pdfplumber error.
+- 001375 p5: overlapping glyphs; pdfplumber re-sorts characters by x and produces 'termso f', 'availalbe' where PyMuPDF keeps 'terms of', 'available'. A pdfplumber error.
+- 001389, 001494: unreadable fonts (the garbled-verdict case); both tools output garbage.
+- Consequence: the reference keeps only words both tools get right, so it leans toward easy words. The chunk 6 benchmark also reports, on disputed words, which tool wordbox agrees with.
+
+# garble set (tools/garble_verify.py)
+clean    files  60  min 1.0000  median 1.0000
+pua      files  60  min 0.9794  median 1.0000
+control  files  60  min 0.0000  median 0.0031
+shift    files  60  min 0.9892  median 1.0000
+page 1 identical to clean: {('clean', True): 60, ('pua', True): 60, ('control', True): 60, ('shift', True): 60}
+(control: PyMuPDF discards ToUnicode entries that map to control characters and falls back to the encoding, so it shows real text; pdfplumber and wordbox pass the file's control characters through. The construction took: see garble.py and PLAN.md.)
