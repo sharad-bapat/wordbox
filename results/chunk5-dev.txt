@@ -1,0 +1,25 @@
+# chunk 5 dev score, 2026-09-27. WORD_GAP 0.15 (tried 0.1: 99.86% found, 95.91% pages; 0.2: 99.91%, 97.25%), BACKSTEP 0.5, BASELINE_SHIFT 0.5, VERDICT_SHARE 0.5
+
+== words against the reference
+reference words 3267791, found 3264888 (99.91%)
+of found: x0 within 1 pt 100.00%, x1 100.00%, baseline 100.00%
+pages with >= 99% of reference words found: 97.45% of 9567
+
+== verdict on the dev garble set (kind, expected, got): pages
+   ('clean', 'text', 'text'): 134
+   ('control', 'garbled', 'garbled'): 134
+   ('pua', 'garbled', 'garbled'): 134
+   ('shift', 'garbled', 'text'): 134
+   clean    134/134 pages with the expected verdict (100.0%)
+   control  134/134 pages with the expected verdict (100.0%)
+   pua      134/134 pages with the expected verdict (100.0%)
+   shift    0/134 pages with the expected verdict (0.0%)
+
+== verdict on the real files: {'text': 9530, 'invisible': 93, 'none': 119, 'garbled': 40}
+   files with garbled or invisible pages: [(('001029.pdf', 'garbled'), 1), (('001081.pdf', 'invisible'), 8), (('001107.pdf', 'invisible'), 1), (('001127.pdf', 'invisible'), 7), (('001131.pdf', 'invisible'), 1), (('001152.pdf', 'invisible'), 15), (('001157.pdf', 'garbled'), 6), (('001266.pdf', 'invisible'), 3), (('001389.pdf', 'garbled'), 11), (('001390.pdf', 'invisible'), 32), (('001392.pdf', 'invisible'), 7), (('001494.pdf', 'garbled'), 22), (('001497.pdf', 'invisible'), 8), (('001655.pdf', 'invisible'), 3), (('001770.pdf', 'invisible'), 1), (('54c808c1b20e4490b1300ad2ce3b9649.pdf', 'invisible'), 5), (('BaconNon-Disclosure.pdf', 'invisible'), 1), (('non-disclosure-agreement_1.pdf', 'invisible'), 1)]
+
+# invisible pages checked by hand: 70 of 93 sit on a full-page image (OCR'd scans); the other 23 are scans cut into many image strips (001152, 001392, 001655) and one vector chart with a searchable invisible layer (001770). All are real invisible text layers.
+
+# determinism: two --glyphs runs over all dev files, timings removed: sha256 54541f24f2a9a940 both times
+
+# frozen: results/frozen.sha256 (python tools/check_frozen.py; line endings normalised)

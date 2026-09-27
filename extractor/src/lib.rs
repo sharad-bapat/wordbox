@@ -613,7 +613,7 @@ fn apply(m: &M, x: f64, y: f64) -> (f64, f64) { (m[0] * x + m[2] * y + m[4], m[1
 fn translate(tx: f64, ty: f64) -> M { [1.0, 0.0, 0.0, 1.0, tx, ty] }
 
 /// Word and line rules, as fractions of the font size. Fixed; tuned on dev only, then frozen.
-pub const WORD_GAP: f64 = 0.1;      // a gap along the baseline wider than this starts a new word
+pub const WORD_GAP: f64 = 0.15;      // a gap along the baseline wider than this starts a new word
 pub const BACKSTEP: f64 = 0.5;      // moving back further than this starts a new word (and a new line)
 pub const BASELINE_SHIFT: f64 = 0.5; // a baseline moving more than this starts a new word and line
 
@@ -654,7 +654,30 @@ pub struct Word {
     pub first: usize, pub count: usize,
 }
 
-pub struct Page { pub n: usize, pub width: f64, pub height: f64, pub rotate: i64, pub glyphs: Vec<Glyph>, pub words: Vec<Word> }
+pub struct Page { pub n: usize, pub width: f64, pub height: f64, pub rotate: i64, pub glyphs: Vec<Glyph>, pub words: Vec<Word>, pub verdict: &'static str }
+
+/// Share of glyphs a verdict needs: half of the visible glyphs invisible makes an OCR layer, and half
+/// of the non-space glyphs undecodable makes a garbled text layer.
+pub const VERDICT_SHARE: f64 = 0.5;
+
+/// A glyph whose text doesn't decode to real characters: unmapped, U+FFFD, private use, or control.
+fn undecodable(g: &Glyph) -> bool {
+    !g.mapped || g.text.chars().any(|c| {
+        let u = c as u32;
+        c == '\u{fffd}' || (0xE000..=0xF8FF).contains(&u) || u >= 0xF0000 || (u < 0x20 && !matches!(c, '\t' | '\n' | '\r')) || (0x7F..0xA0).contains(&u)
+    })
+}
+
+/// The page verdict, by fixed rules in this order: none, invisible, garbled, text.
+fn verdict(glyphs: &[Glyph]) -> &'static str {
+    let shown: Vec<&Glyph> = glyphs.iter().filter(|g| !g.offpage).collect();
+    if shown.is_empty() { return "none"; }
+    if shown.iter().filter(|g| g.invisible).count() as f64 >= VERDICT_SHARE * shown.len() as f64 { return "invisible"; }
+    let ink: Vec<&&Glyph> = shown.iter().filter(|g| !is_space(g)).collect();
+    if ink.is_empty() { return "none"; }
+    if ink.iter().filter(|g| undecodable(g)).count() as f64 >= VERDICT_SHARE * ink.len() as f64 { return "garbled"; }
+    "text"
+}
 
 pub struct FontInfo { pub base: String, pub kind: Kind, pub encoding: String, pub to_unicode: bool, pub embedded: bool, pub widths: &'static str }
 
@@ -1093,7 +1116,8 @@ pub fn extract(data: &[u8]) -> Doc {
         place(&mut glyphs, &pb);
         let ws = words(&glyphs);
         let (width, height) = pb.size();
-        pages.push(Page { n: k + 1, width, height, rotate: pb.rotate, glyphs, words: ws });
+        let v = verdict(&glyphs);
+        pages.push(Page { n: k + 1, width, height, rotate: pb.rotate, glyphs, words: ws, verdict: v });
     }
     let fonts = r.fonts.list.iter().map(|f| FontInfo {
         base: f.base.clone(), kind: f.kind, encoding: f.encoding.clone(), to_unicode: f.has_to_unicode(), embedded: f.embedded, widths: f.metrics.source,
@@ -1145,8 +1169,8 @@ impl Doc {
     pub fn to_json(&self, glyphs: bool) -> String {
         let pages: Vec<String> = self.pages.iter().map(|p| {
             let words: Vec<String> = p.words.iter().map(|w| format!(
-                "{{\"t\":{},\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{},\"line\":{},\"font\":{},\"size\":{}{}{}}}",
-                json_str(&w.text), r1(w.x0), r1(w.y0), r1(w.x1), r1(w.y1), w.line,
+                "{{\"t\":{},\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{},\"b\":{},\"line\":{},\"font\":{},\"size\":{}{}{}}}",
+                json_str(&w.text), r1(w.x0), r1(w.y0), r1(w.x1), r1(w.y1), r1(p.glyphs[w.first].oy), w.line,
                 if w.font == u32::MAX { -1 } else { w.font as i64 }, r1(w.size),
                 if w.unmapped > 0 { format!(",\"unmapped\":{}", w.unmapped) } else { String::new() },
                 flags(w.invisible, w.annot, w.offpage)
@@ -1160,8 +1184,8 @@ impl Doc {
                 format!(",\"glyphs\":[{}]", g.join(","))
             } else { String::new() };
             let unmapped = p.glyphs.iter().filter(|g| !g.mapped).count();
-            format!("{{\"n\":{},\"width\":{},\"height\":{},\"rotate\":{},\"glyph_count\":{},\"unmapped\":{},\"words\":[{}]{}}}",
-                p.n, r1(p.width), r1(p.height), p.rotate, p.glyphs.len(), unmapped, words.join(","), gl)
+            format!("{{\"n\":{},\"width\":{},\"height\":{},\"rotate\":{},\"verdict\":\"{}\",\"glyph_count\":{},\"unmapped\":{},\"words\":[{}]{}}}",
+                p.n, r1(p.width), r1(p.height), p.rotate, p.verdict, p.glyphs.len(), unmapped, words.join(","), gl)
         }).collect();
         format!("{{\"status\":\"{}\",\"pages\":[{}],\"fonts\":[{}]}}", self.status, pages.join(","), self.fonts_json())
     }

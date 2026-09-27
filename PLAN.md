@@ -59,7 +59,7 @@ It starts from a copy of scan-or-text's parser (object index, page tree, decrypt
 2. Widths: /Widths with /FirstChar, CID /W arrays with /DW, and built-in width tables for the 14 standard fonts, which are often not embedded.
 3. Text state and geometry: Tc, Tw, Tz, TL, Ts, TJ adjustments, the text and graphics matrices, form XObjects, and page rotation and CropBox.
 4. Words and lines by the fixed rules above.
-5. The verdict, from signals the parser knows directly: codes it couldn't map to Unicode, U+FFFD, private-use characters and control characters. Whether a word list is needed to catch letter-shifted gibberish is one of the questions below.
+5. The verdict (done, chunk 5), by fixed rules in this order: `none` (no glyphs on the visible page); `invisible` (at least half the visible glyphs drawn with render mode 3 or 7); `garbled` (at least half the non-space glyphs unmapped, U+FFFD, private use or control characters); otherwise `text`. There's no word list, so text shifted by one letter reads as `text`: catching it would mean judging language, which this tool doesn't do.
 
 Budget: under 2,000 lines of Rust, one or two small dependencies (inflate, plus the decryption crates scan-or-text already uses), and a WebAssembly build under 250 KB.
 
@@ -86,7 +86,7 @@ How it's built (tools/reference.py, chunk 4): both tools' words are put in wordb
 
 The metrics, fixed before any results:
 
-- Text: word match rate and character error rate against the reference, per page.
+- Text: word match rate against the reference, overall and per page. (A separate character error rate was dropped in chunk 5, before any held-out run: an exact word match is stricter and already covers it.)
 - Geometry, for matched words: the difference in x0, x1 and baseline, in points, and the share within 1 point. The box height depends on each tool's ascent convention, so full-box overlap is reported but isn't the main number.
 - Verdict: precision and recall of `garbled` on the constructed set, and false alarms on clean files.
 - Speed and size: median and p95 per file, native and WebAssembly, against pdf.js 6.3 `getTextContent` in Node, pdfplumber and PyMuPDF. pdf.js returns text runs, not words, so its runs are compared at line level, and the method is written down with the results.
@@ -119,7 +119,7 @@ pdf.js (Apache-2.0) renders the page. It's the one runtime dependency, and it's 
 2. Fonts and decoding: glyphs to Unicode.
 3. Geometry: glyph boxes, words and lines.
 4. Reference labeller (PyMuPDF plus pdfplumber consensus) and the constructed garble set.
-5. The verdict and the dev scoring loop, then freeze.
+5. The verdict and the dev scoring loop, then freeze (done: results/chunk5-dev.txt, results/frozen.sha256, tools/check_frozen.py). On dev: 99.91% of 3.27M reference words found, all within 1 pt on x0, x1 and baseline; the verdict right on 100% of clean, pua and control pages and 0% of shift pages.
 6. Held-out run and the competitor benchmark. Because the consensus keeps only words both reference tools get right (chunk 4 found pdfplumber running space-less lines together and re-sorting overlapping glyphs), the benchmark also reports, on disputed words, which tool wordbox agrees with.
 7. WebAssembly build and the side-by-side demo with pdf.js.
 8. README, then the write-up on sharadbapat.com (following WRITING.md).
