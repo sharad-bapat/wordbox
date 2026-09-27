@@ -46,7 +46,7 @@ for (const s of ['letter', 'rotated', 'form', 'garbled']) {
   for (let i = 0; i < 60; i++) {
     await sleep(250);
     state = await evaluate(`(() => { const c = document.querySelector('.wb-stage canvas'); return {
-      drawn: !!c && !c.hidden && c.width > 0, boxes: document.querySelectorAll('.wb-box').length,
+      drawn: !!c && !c.hidden && c.width > 0 && document.querySelector('.wb-stage')?.dataset.rendered === '1', boxes: document.querySelectorAll('.wb-box').length,
       words: document.querySelectorAll('.wb-w').length, verdict: document.querySelector('.wb-verdict')?.textContent,
       status: document.querySelector('.wb-status')?.textContent, bar: !document.querySelector('.wb-bar').hidden }; })()`);
     if (state?.drawn) break;

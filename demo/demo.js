@@ -120,6 +120,7 @@ async function drawPage(page) {
       if (renderTask) renderTask.cancel();
       renderTask = p.render({ canvasContext: canvas.getContext('2d'), viewport: vp, transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : null, annotationMode: pdfjs.AnnotationMode.ENABLE });
       await renderTask.promise.catch(() => {});
+      stage.dataset.rendered = String(want + 1); // the page number just drawn, for tools/demo_check.mjs
     } catch { /* the words and boxes still show without the drawing */ }
   }
 }
