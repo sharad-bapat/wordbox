@@ -39,17 +39,22 @@ const evaluate = async (expr) => (await send('Runtime.evaluate', { expression: e
 await send('Runtime.enable'); await send('Log.enable'); await send('Page.enable');
 
 let failed = 0;
+const LABEL = { letter: 'Letter', rotated: 'Rotated page', form: 'Form', garbled: 'Garbled text' };
 for (const s of ['letter', 'rotated', 'form', 'garbled']) {
   log.length = 0;
+  // start from a blank page each time: moving between samples only changes the hash, and the old sample's
+  // state would otherwise be read before the new one replaces it
+  await send('Page.navigate', { url: 'about:blank' });
+  await sleep(200);
   await send('Page.navigate', { url: `${base}#sample=${s}` });
   let state;
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 80; i++) {
     await sleep(250);
     state = await evaluate(`(() => { const c = document.querySelector('.wb-stage canvas'); return {
       drawn: !!c && !c.hidden && c.width > 0 && document.querySelector('.wb-stage')?.dataset.rendered === '1', boxes: document.querySelectorAll('.wb-box').length,
       words: document.querySelectorAll('.wb-w').length, verdict: document.querySelector('.wb-verdict')?.textContent,
       status: document.querySelector('.wb-status')?.textContent, bar: !document.querySelector('.wb-bar').hidden }; })()`);
-    if (state?.drawn) break;
+    if (state?.drawn && state.status?.startsWith(`Sample: ${LABEL[s]}:`)) break;
   }
   const hover = await evaluate(`(() => { const w = document.querySelector('.wb-words [data-k]'); if (!w) return 'no words';
     w.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
@@ -58,7 +63,7 @@ for (const s of ['letter', 'rotated', 'form', 'garbled']) {
     w.dispatchEvent(new PointerEvent('pointerout', { bubbles: true })); return ok ? 'ok' : 'not lit'; })()`);
   const shot = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(join(outDir, `demo-${s}.png`), Buffer.from(shot.result.data, 'base64'));
-  const ok = state?.drawn && state.boxes > 0 && state.words > 0 && hover === 'ok' && !log.some((l) => /exception|console.error/.test(l));
+  const ok = state?.drawn && state.status?.startsWith(`Sample: ${LABEL[s]}:`) && state.boxes > 0 && state.words > 0 && hover === 'ok' && !log.some((l) => /exception|console.error/.test(l));
   if (!ok) failed++;
   console.log(JSON.stringify({ sample: s, ok, ...state, hover, log }));
 }
