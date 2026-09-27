@@ -61,7 +61,7 @@ It starts from a copy of scan-or-text's parser (object index, page tree, decrypt
 4. Words and lines by the fixed rules above.
 5. The verdict (done, chunk 5), by fixed rules in this order: `none` (no glyphs on the visible page); `invisible` (at least half the visible glyphs drawn with render mode 3 or 7); `garbled` (at least half the non-space glyphs unmapped, U+FFFD, private use or control characters); otherwise `text`. There's no word list, so text shifted by one letter reads as `text`: catching it would mean judging language, which this tool doesn't do.
 
-Budget: under 2,000 lines of Rust, one or two small dependencies (inflate, plus the decryption crates scan-or-text already uses), and a WebAssembly build under 250 KB.
+Budget: under 2,000 lines of Rust, one or two small dependencies (inflate, plus the decryption crates scan-or-text already uses), and a WebAssembly build under 250 KB. Actual: about 2,030 lines, those three dependencies, and 375 KB (150 KB gzipped). The size target was missed; see the results below.
 
 ## Data
 
@@ -101,6 +101,14 @@ These are targets written before the results, not promises:
 2. The verdict flags every private-use and control-character constructed page, with no false alarms on the untouched copies, and flags real unmapped text (like govdocs 001157 and 001389). The letter-shift case may need a word list; we'll report whether it did. (Written before results; the variant names changed in chunk 4 from "unmappable" to "control", because deleting a map lets the font program recover the text.)
 3. Faster than pdf.js text extraction in the same runtime, at a small fraction of its size.
 
+### Results on the held-out set (chunk 6; rules frozen and checked first)
+
+1. Holds. 99.55% of 1,730,015 held-out reference words found; of those, 99.98% within 1 pt on x0, 99.96% on x1, 99.86% on the baseline (results/chunk6-heldout.txt). On words the reference tools dispute, wordbox has 94.6% of the words only PyMuPDF finds and 3.2% of those only pdfplumber finds (results/chunk6-disputes-heldout.txt): it sides with PyMuPDF, and the hand check in chunk 4 found pdfplumber-only words are mostly run-together lines and re-sorted letters.
+2. Holds for private-use and control pages: 128 of 128 each on the held-out garble split, and 128 of 128 clean pages read as text. Letter-shifted text is not caught (0 of 128), since there is no word list. Real held-out pages flagged garbled (51, in g002202, g002676, g002678) were all checked: PyMuPDF turns them into control-character runs too.
+3. Holds on speed, with the size target missed. In Node, wordbox's WebAssembly build takes 1.47 ms per page against pdf.js's 5.05, and is faster on all 61 files sampled; its output is identical to the native build on all 61. The build is 375 KB (150 KB gzipped) against pdf.js's 1,684 KB (493 KB gzipped): about a fifth, but over the 250 KB target set in the budget, because of the glyph-name and standard-width tables. Natively: 0.72 ms per page, against PyMuPDF 1.50 and pdfplumber 70.4 (results/chunk6-speed-heldout.txt).
+
+Output is byte-identical across runs on the held-out set too.
+
 ## Known limits, stated up front
 
 - Type3 fonts draw glyphs with their own procedures; their boxes come from the font matrix and widths only.
@@ -121,5 +129,5 @@ pdf.js (Apache-2.0) renders the page. It's the one runtime dependency, and it's 
 4. Reference labeller (PyMuPDF plus pdfplumber consensus) and the constructed garble set.
 5. The verdict and the dev scoring loop, then freeze (done: results/chunk5-dev.txt, results/frozen.sha256, tools/check_frozen.py). On dev: 99.91% of 3.27M reference words found, all within 1 pt on x0, x1 and baseline; the verdict right on 100% of clean, pua and control pages and 0% of shift pages.
 6. Held-out run and the competitor benchmark. Because the consensus keeps only words both reference tools get right (chunk 4 found pdfplumber running space-less lines together and re-sorting overlapping glyphs), the benchmark also reports, on disputed words, which tool wordbox agrees with.
-7. WebAssembly build and the side-by-side demo with pdf.js.
+7. WebAssembly build and the side-by-side demo with pdf.js (done). wasm/ is a separate crate (one call, extract_json) so the frozen extractor is untouched. demo/ loads a PDF or one of four made-up samples (tools/samples.py: letter, rotated, form, garbled), draws the page with pdf.js 6.3.289 (annotations drawn from their appearance streams, eval off), boxes every word on top, and lists the words by line beside it; hovering either lights up both. tools/demo_check.mjs drives it in headless Chrome in real time: all four samples draw, box, list and light up with no script errors. Limits: pdf.js's CJK maps and standard-font files aren't bundled (positions don't depend on them; glyph shapes for non-embedded fonts can differ), and slanted text gets an upright box around each word.
 8. README, then the write-up on sharadbapat.com (following WRITING.md).
