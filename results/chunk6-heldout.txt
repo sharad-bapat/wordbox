@@ -1,0 +1,31 @@
+# chunk 6 held-out score, 2026-09-27. First run of wordbox on govdocs1 thread 002 (242 PDFs) and the held-out garble split. Frozen source checked first (tools/check_frozen.py: ok).
+
+## held-out reference (tools/reference.py, --jobs 4)
+files 242 (errors 0), pages 6553 (errors 102, empty 376)
+reference words 1730015  (PyMuPDF 2142583, pdfplumber 1898938, same text but placed apart 23969)
+word-level agreement: 80.74% of the larger tool's words
+pages with >= 95% agreement: 4042 of 6177 (65.44%); disputed 2135
+
+(page errors: 97 are pages pdfplumber doesn't find, in g002400, g002731 and g002729; 5 are pages of g002358 where pdfplumber raised "list index out of range". All are left out of the reference.)
+
+== words against the reference
+reference words 1730015, found 1722169 (99.55%)
+of found: x0 within 1 pt 99.98%, x1 99.96%, baseline 99.86%
+pages with >= 99% of reference words found: 93.89% of 6107
+
+== verdict on the heldout garble set (kind, expected, got): pages
+   ('clean', 'text', 'text'): 128
+   ('control', 'garbled', 'garbled'): 128
+   ('pua', 'garbled', 'garbled'): 128
+   ('shift', 'garbled', 'text'): 128
+   clean    128/128 pages with the expected verdict (100.0%)
+   control  128/128 pages with the expected verdict (100.0%)
+   pua      128/128 pages with the expected verdict (100.0%)
+   shift    0/128 pages with the expected verdict (0.0%)
+
+== verdict on the real files: {'none': 384, 'text': 6071, 'invisible': 149, 'garbled': 51}
+   files with garbled or invisible pages: [(('g002188.pdf', 'invisible'), 43), (('g002202.pdf', 'garbled'), 1), (('g002415.pdf', 'invisible'), 2), (('g002483.pdf', 'invisible'), 5), (('g002676.pdf', 'garbled'), 32), (('g002678.pdf', 'garbled'), 18), (('g002844.pdf', 'invisible'), 98), (('g002910.pdf', 'invisible'), 1)]
+
+## real pages flagged garbled, checked with PyMuPDF
+- g002202 p3: physics text with unmapped maths fonts (1,281 of 2,153 glyphs); PyMuPDF gives \x00\x01 runs.
+- g002676 (32 pages), g002678 (18 pages): Type1 fonts with custom glyph names and no ToUnicode; PyMuPDF gives control-character runs (5% real characters).

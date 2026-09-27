@@ -1,0 +1,18 @@
+files timed by all four tools: 61 of 61 (1733 pages)
+tool         median ms/file       p95   total s   ms/page
+wordbox                7.88      89.6       1.2      0.72
+PyMuPDF               15.85     177.6       2.6      1.50
+pdfplumber           661.52   12475.1     122.0     70.40
+pdf.js                67.26     450.7       8.7      5.05
+sizes:
+  wordbox CLI (native, release): 636 KB
+  pdf.js 6.3 pdf.min.mjs + pdf.worker.min.mjs: 1684 KB
+  PyMuPDF package: 44.5 MB
+  pdfplumber + pdfminer.six packages: 9.2 MB (plus their dependencies)
+
+## same runtime: wordbox WebAssembly build vs pdf.js, both in Node 24 (bench/wasm_speed.mjs, bench/pdfjs_speed.mjs)
+wordbox wasm  median   13.83 ms/file  p95   144.4  total   2.6 s   1.47 ms/page
+pdf.js        median   67.26 ms/file  p95   450.7  total   8.7 s   5.05 ms/page
+wordbox wasm faster on 61 of 61 files; its output identical to the native CLI on 61 of 61
+sizes: wordbox_wasm_bg.wasm 375 KB (150 KB gzipped; the plan's target was 250 KB, missed because of the glyph-name and standard-width tables, which stay frozen); pdf.js pdf.min.mjs + pdf.worker.min.mjs 1,684 KB (493 KB gzipped)
+note: pdf.js returns text runs with a transform, not words or per-glyph boxes, so this compares text extraction time only.

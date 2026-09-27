@@ -1,0 +1,3 @@
+files 61 (every 4th), pages with verdict text only
+words only PyMuPDF has: 35658; wordbox has 33742 of them (94.6%)
+words only pdfplumber has: 32913; wordbox has 1047 of them (3.2%)

@@ -1,0 +1,7 @@
+{
+  "name": "wordbox-bench",
+  "private": true,
+  "description": "Speed comparison against pdf.js text extraction. Not shipped.",
+  "type": "module",
+  "dependencies": { "pdfjs-dist": "6.3.289" }
+}
