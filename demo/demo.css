@@ -1,23 +1,23 @@
 [hidden] { display: none !important; }
 /* Where is the text? demo. Uses the site's tokens when present, with fallbacks for the standalone page. */
 #demo {
-  --wb-ink: var(--ink, #1c1c1c);
+  --wb-ink: var(--text, #1c1c1c);
   --wb-muted: var(--muted, #6b6b6b);
-  --wb-line: var(--line, #d6d6d4);
-  --wb-bg: var(--surface, #ffffff);
+  --wb-line: var(--rule, #d6d6d4);
+  --wb-bg: var(--bg, #ffffff);
   --wb-accent: #1e50a2;
   --wb-annot: #b35c00;
   --wb-bad: #b3261e;
 }
 @media (prefers-color-scheme: dark) {
-  #demo { --wb-ink: var(--ink, #ececec); --wb-muted: var(--muted, #a3a3a3); --wb-line: var(--line, #3a3a3a); --wb-bg: var(--surface, #1f1f1f); --wb-accent: #7aa0e8; --wb-annot: #f0a04b; --wb-bad: #f2837b; }
+  #demo { --wb-ink: var(--text, #ececec); --wb-muted: var(--muted, #a3a3a3); --wb-line: var(--rule, #3a3a3a); --wb-bg: var(--bg, #1f1f1f); --wb-accent: #7aa0e8; --wb-annot: #f0a04b; --wb-bad: #f2837b; }
 }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .wb-drop { border: 1.5px dashed var(--wb-line); border-radius: 12px; padding: 1.25rem; text-align: center; }
 .wb-drop.over { border-color: var(--wb-accent); }
 .wb-drop p { margin: 0 0 0.75rem; color: var(--wb-muted); }
 .wb-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
-.wb-btn { font: inherit; font-size: 0.9rem; padding: 0.45rem 0.85rem; border-radius: 999px; border: 1px solid var(--wb-ink); background: var(--wb-ink); color: var(--wb-bg); cursor: pointer; }
+.wb-btn { display: inline-flex; align-items: center; min-height: 44px; font: inherit; font-size: 0.9rem; padding: 0.45rem 0.95rem; border-radius: 999px; border: 1px solid var(--wb-ink); background: var(--wb-ink); color: var(--wb-bg); cursor: pointer; }
 .wb-btn.ghost { background: transparent; color: var(--wb-ink); border-color: var(--wb-line); }
 .wb-btn:disabled { opacity: 0.4; cursor: default; }
 .wb-btn:focus-visible, .wb-toggle input:focus-visible { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
@@ -28,7 +28,8 @@
 .wb-verdict.v-garbled { color: var(--wb-bad); border-color: currentColor; }
 .wb-verdict.v-invisible { color: var(--wb-annot); border-color: currentColor; }
 .wb-counts { color: var(--wb-muted); }
-.wb-toggle { margin-left: auto; }
+.wb-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; min-height: 44px; }
+.wb-toggle input { width: 1.1rem; height: 1.1rem; }
 .wb-view { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
 @media (max-width: 760px) { .wb-view { grid-template-columns: 1fr; } }
 .wb-stage { position: relative; background: #fff; border: 1px solid var(--wb-line); border-radius: 4px; overflow: hidden; }
