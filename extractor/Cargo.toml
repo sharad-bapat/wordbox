@@ -1,0 +1,29 @@
+[package]
+name = "wordbox"
+version = "0.1.0"
+edition = "2021"
+description = "Where is the text? Every word a born-digital PDF draws, with its box. Deterministic, no rendering."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "wordbox-cli"
+path = "src/main.rs"
+
+[dependencies]
+miniz_oxide = "0.8"
+# Decryption of PDFs that open with an empty user password (standard handler R2-R4: RC4, AES-128).
+md-5 = "0.10"
+aes = "0.8"
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+wasm = ["dep:wasm-bindgen"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

@@ -1,0 +1,43 @@
+# chunk 3 checks on dev, 2026-09-27. Rules: WORD_GAP 0.1, BACKSTEP 0.5, BASELINE_SHIFT 0.5 (em)
+
+## geometry_check.py --every 5 (glyph x0, x1, baseline vs PyMuPDF rawdict; PyMuPDF points turned by page.rotation_matrix)
+
+
+
+
+
+page: 3710441 glyphs, matched 3709386 (99.97%)
+   x0       median 0.024  p99 0.05  within 0.5pt 99.88%  within 1pt 99.88%
+   x1       median 0.024  p99 0.05  within 0.5pt 99.92%  within 1pt 99.96%
+   baseline median 0.020  p99 0.05  within 0.5pt 100.00%  within 1pt 100.00%
+annot: 986 glyphs, matched 976 (98.99%)
+   x0       median 0.024  p99 0.05  within 0.5pt 100.00%  within 1pt 100.00%
+   x1       median 0.025  p99 0.05  within 0.5pt 100.00%  within 1pt 100.00%
+   baseline median 0.046  p99 0.13  within 0.5pt 100.00%  within 1pt 100.00%
+rotated: 50647 glyphs, matched 50647 (100.00%)
+   x0       median 0.026  p99 0.70  within 0.5pt 97.06%  within 1pt 100.00%
+   x1       median 0.026  p99 1.49  within 0.5pt 97.06%  within 1pt 97.06%
+   baseline median 0.021  p99 0.05  within 0.5pt 100.00%  within 1pt 100.00%
+
+## word_check.py --every 5 (same text, box centre within 2 pt)
+
+
+
+
+
+our words: 712080, also in PyMuPDF: 99.73%
+PyMuPDF words: 711980, also in ours: 99.74%
+pages skipped as mostly unmapped: 22
+ours only, most common: [('---', 126), ('1', 83), ('3', 71), ('the', 33), ('9', 30), ('.', 29), ('0', 29), ('2', 22), (':', 17), ('of', 16), ('5', 16), ('•', 15), ('and', 14), ('2008', 14), (',', 13), ('š1', 12), ('to', 11), ('a', 11), ('is', 10), ('⁄', 10)]
+theirs only, most common: [('ƒ', 319), ('1---', 63), ('---3', 63), ('•', 23), ('3⁄4', 22), ('.', 21), ('of', 19), ('μm', 18), ('m)', 16), ('Whe', 13), ('r', 13), ('C', 12), ('š1', 12), ('the', 9), ('0Ð5', 9), ('I', 8), ('\uf6d92005', 8), ('USAID/Sierra', 8), ('Leone', 8), ('Diamond', 8)]
+
+## decode_check.py (all dev)
+pages 9782  both empty 117  page-count mismatches (files) 0
+pages with char F1 >= 0.99: 9346 of 9665 (96.70%)
+chars: ours 18427602  pymupdf 18545908  matched 18410930  precision 0.9991  recall 0.9927  unmapped glyphs 143064
+
+## speed, all dev files, native release build
+files 659 median ms 6.69 p95 44.2 max 213.0 ms/page 0.88
+
+## determinism (after the object-stream order fix)
+three runs of --glyphs over all 659 dev files, timings removed: sha256 4fc9cda781cc9a44 each time

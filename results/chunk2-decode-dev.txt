@@ -1,0 +1,47 @@
+# decode_check.py on dev (ContractNLI 375 + govdocs1 001 PDFs 284), 2026-09-27
+files: {'ok': 659}
+pages 9782  both empty 117  page-count mismatches (files) 0
+pages with char F1 >= 0.99: 9326 of 9665 (96.49%)
+chars: ours 18426324  pymupdf 18545908  matched 18409598  precision 0.9991  recall 0.9927  unmapped glyphs 143064
+worst 0 pages:
+
+# unmapped_report.py
+
+
+
+
+
+
+
+unmapped glyphs: 143059
+  100112   70.0%  pymupdf garbage | Type3 | none | not embedded | no ToUnicode  (3 files, e.g. ['001157.pdf', '001389.pdf', '001494.pdf'])
+   37367   26.1%  pymupdf garbage | Type1 | font program | embedded | no ToUnicode  (1 files, e.g. ['001389.pdf'])
+    1533    1.1%  pymupdf readable | Type1 | Standard | embedded | no ToUnicode  (13 files, e.g. ['001057.pdf', '001099.pdf', '001290.pdf'])
+    1515    1.1%  pymupdf readable | Type1 | font program | embedded | no ToUnicode  (8 files, e.g. ['001029.pdf', '001033.pdf', '001061.pdf'])
+     960    0.7%  pymupdf readable | Type0 | Identity-H | embedded | no ToUnicode  (21 files, e.g. ['001059.pdf', '001070.pdf', '001307.pdf'])
+     337    0.2%  pymupdf readable | Type3 | none | not embedded | no ToUnicode  (6 files, e.g. ['001053.pdf', '001296.pdf', '001466.pdf'])
+     280    0.2%  pymupdf readable | Type1 | built-in symbol | not embedded | no ToUnicode  (14 files, e.g. ['001127.pdf', '001147.pdf', '001149.pdf'])
+     231    0.2%  pymupdf readable | Type0 | Identity-H | embedded | ToUnicode  (3 files, e.g. ['001305.pdf', '001668.pdf', 'NDA-Fintricity-Blank.pdf'])
+     210    0.1%  pymupdf readable | Type1 | Standard | embedded | ToUnicode  (10 files, e.g. ['001099.pdf', '001274.pdf', '001290.pdf'])
+     173    0.1%  pymupdf readable | TrueType | built-in symbolic | not embedded | no ToUnicode  (8 files, e.g. ['001032.pdf', '001271.pdf', '001310.pdf'])
+      90    0.1%  pymupdf garbage | Type1 | Standard | embedded | no ToUnicode  (1 files, e.g. ['001029.pdf'])
+      45    0.0%  pymupdf readable | Type1 | WinAnsi | embedded | no ToUnicode  (6 files, e.g. ['001045.pdf', '001103.pdf', '001694.pdf'])
+      39    0.0%  pymupdf readable | TrueType | built-in symbolic | embedded | no ToUnicode  (1 files, e.g. ['Attachment 9 -  Non Disclosure Agreement (Version 1).pdf'])
+      34    0.0%  pymupdf readable | Type1 | built-in symbol | embedded | no ToUnicode  (2 files, e.g. ['001897.pdf', 'CNDA1218Draft3.pdf'])
+      31    0.0%  pymupdf readable | Type1 | built-in symbol | embedded | ToUnicode  (1 files, e.g. ['001683.pdf'])
+      22    0.0%  pymupdf garbage | Type1 | built-in symbol | not embedded | no ToUnicode  (1 files, e.g. ['001157.pdf'])
+      20    0.0%  pymupdf garbage | TrueType | built-in symbolic | embedded | no ToUnicode  (1 files, e.g. ['Attachment 9 -  Non Disclosure Agreement (Version 1).pdf'])
+      19    0.0%  pymupdf readable | Type1 | built-in symbol | not embedded | ToUnicode  (1 files, e.g. ['001800.pdf'])
+      15    0.0%  pymupdf readable | Type1 | WinAnsi | not embedded | no ToUnicode  (2 files, e.g. ['001057.pdf', '001127.pdf'])
+       9    0.0%  pymupdf readable | TrueType | WinAnsi | not embedded | no ToUnicode  (1 files, e.g. ['nda_2.pdf'])
+       7    0.0%  pymupdf readable | Type0 | Identity-H | not embedded | no ToUnicode  (1 files, e.g. ['one-way_nda_ji_form.pdf'])
+       4    0.0%  pymupdf readable | TrueType | MacRoman | embedded | no ToUnicode  (1 files, e.g. ['NUSD-Non-Disclosure-Agreement.pdf'])
+       3    0.0%  pymupdf readable | Type1 | MacRoman | embedded | no ToUnicode  (1 files, e.g. ['001063.pdf'])
+       3    0.0%  pymupdf readable | TrueType | WinAnsi | embedded | no ToUnicode  (1 files, e.g. ['001370.pdf'])
+
+# pages below F1 0.99, by cause
+  119  cropbox smaller than mediabox, we have extra
+   89  both differ
+   79  we miss text
+   40  mostly unmapped (verdict case)
+   12  we have extra text
