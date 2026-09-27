@@ -2,9 +2,17 @@
 // words listed beside it. Hover a box or a word to light up both. Everything runs in this page: the file
 // is never uploaded.
 import init, { extract_json } from './wordbox_wasm.js';
-import * as pdfjs from './pdfjs/pdf.min.mjs';
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL('./pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+// pdf.js and the WebAssembly module load on first use, not with the page, so the page itself stays light
+let pdfjs = null;
+async function loadPdfjs() {
+  if (!pdfjs) {
+    const lib = await import('./pdfjs/pdf.min.mjs');
+    lib.GlobalWorkerOptions.workerSrc = new URL('./pdfjs/pdf.worker.min.mjs', import.meta.url).href;
+    pdfjs = lib;
+  }
+  return pdfjs;
+}
 
 const root = document.getElementById('demo');
 const el = (tag, attrs = {}, ...kids) => {
@@ -39,13 +47,13 @@ const view = el('div', { class: 'wb-view', hidden: true }, stage, words);
 root.replaceChildren(zone, status, bar, view,
   el('p', { class: 'wb-note' }, 'Your file stays on your device: it’s read in this page and never uploaded.'));
 
-const ready = init();
+let ready = null;
 let result = null, pdf = null, pdfReady = false, index = 0, name = "", showBoxes = true, renderTask = null;
 
 async function load(fileName, bytes) {
   name = fileName;
   status.textContent = 'Reading…';
-  await ready;
+  await (ready ||= init());
   const t = performance.now();
   result = JSON.parse(extract_json(bytes));
   const ms = performance.now() - t;
@@ -58,12 +66,17 @@ async function load(fileName, bytes) {
   status.textContent = `${name}: ${result.pages.length} page${result.pages.length === 1 ? '' : 's'}, ${total.toLocaleString()} words, found in ${ms < 0.1 ? 'under 0.1' : ms < 10 ? ms.toFixed(1) : Math.round(ms)} ms in your browser.`;
   // the words and boxes don't wait for pdf.js: the drawing is added when it's ready (or left out if it fails)
   if (pdf) pdf.destroy().catch(() => {});
+  pdf = null;
   pdfReady = false;
-  pdf = pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false });
-  const task = pdf;
-  pdf.promise.then(() => { if (pdf === task) { pdfReady = true; if (result) drawPage(result.pages[index]); } }, () => { if (pdf === task) pdf = null; });
   index = 0;
   show();
+  const mine = result;
+  loadPdfjs().then((lib) => {
+    if (result !== mine) return; // another file was chosen meanwhile
+    const task = lib.getDocument({ data: bytes.slice(), isEvalSupported: false });
+    pdf = task;
+    task.promise.then(() => { if (pdf === task) { pdfReady = true; drawPage(result.pages[index]); } }, () => { if (pdf === task) pdf = null; });
+  }, () => { /* without pdf.js the boxes and words still show */ });
 }
 
 async function show() {
