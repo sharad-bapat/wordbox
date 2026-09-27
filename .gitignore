@@ -1,0 +1,6 @@
+target/
+wasm-pkg/
+data/
+__pycache__/
+.venv/
+node_modules/
