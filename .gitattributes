@@ -1,0 +1,4 @@
+# keep binaries and vendored files byte-exact
+*.pdf binary
+*.wasm binary
+demo/pdfjs/** -text
