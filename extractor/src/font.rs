@@ -128,10 +128,42 @@ fn std_widths(base: &str) -> Option<&'static [(char, u16)]> {
 
 fn load_vertical(pdf: &Pdf, fd: Option<&[u8]>, m: &mut Metrics) {
     let Some(fd) = fd else { return };
-    let (a, d) = (number(pdf, get(fd, b"/Ascent")).unwrap_or(0.0), number(pdf, get(fd, b"/Descent")).unwrap_or(0.0));
-    if a > 0.0 { m.ascent = a; m.descent = d.min(0.0); return; }
-    let bb = numbers(pdf, get(fd, b"/FontBBox"));
-    if bb.len() == 4 && bb[3] > bb[1] { m.ascent = bb[3]; m.descent = bb[1].min(0.0); }
+    let a = number(pdf, get(fd, b"/Ascent")).unwrap_or(0.0);
+    let d = number(pdf, get(fd, b"/Descent")).unwrap_or(0.0);
+    if let Some((asc, desc)) = vertical_from(a, d, &numbers(pdf, get(fd, b"/FontBBox"))) {
+        m.ascent = asc;
+        m.descent = desc;
+    }
+}
+
+/// Ascent and descent from a font descriptor's /Ascent, /Descent and /FontBBox, in glyph units.
+/// The descent should be negative, but some producers write it positive (govdocs1 and ContractNLI
+/// files give "/Descent 270" for Arial Unicode), so its size is taken and the sign forced. A
+/// missing or zero value falls back to the bounding box, so a box never stops at the baseline
+/// unless the font really has nothing below it. (Ported from where-are-the-regions.)
+fn vertical_from(a: f64, d: f64, bb: &[f64]) -> Option<(f64, f64)> {
+    let bb = if bb.len() == 4 && bb[3] > bb[1] { Some((bb[3], bb[1].min(0.0))) } else { None };
+    let asc = if a > 0.0 { a } else { bb?.0 };
+    let desc = if d != 0.0 { -d.abs() } else { bb.map_or(0.0, |b| b.1) };
+    Some((asc, desc))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::vertical_from;
+
+    #[test]
+    fn descent_is_below_the_baseline_whatever_its_sign() {
+        assert_eq!(vertical_from(1068.0, 270.0, &[-1011.0, -329.0, 2260.0, 1079.0]), Some((1068.0, -270.0)));
+        assert_eq!(vertical_from(905.0, -212.0, &[]), Some((905.0, -212.0)));
+    }
+
+    #[test]
+    fn missing_values_fall_back_to_the_bounding_box() {
+        assert_eq!(vertical_from(1000.0, 0.0, &[-599.0, -207.0, 1338.0, 1035.0]), Some((1000.0, -207.0)));
+        assert_eq!(vertical_from(0.0, 0.0, &[0.0, -250.0, 1000.0, 900.0]), Some((900.0, -250.0)));
+        assert_eq!(vertical_from(0.0, 0.0, &[]), None);
+    }
 }
 
 /// Unicode for a glyph name, by the Adobe Glyph List specification's rules.
