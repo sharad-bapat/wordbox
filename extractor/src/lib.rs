@@ -890,6 +890,10 @@ impl<'p, 'a> Run<'p, 'a> {
                     // inline image: skip its data up to a whitespace-delimited EI
                     let id = find(s, b"ID", i).unwrap_or(s.len());
                     let mut k = id + 2;
+                    // ASCII-encoded data can hold "EI" itself, so skip to its end marker first
+                    if let Some(end) = ascii_data_end(&s[i..id.min(s.len())]) {
+                        if let Some(e) = find(s, end, k) { k = e + end.len(); }
+                    }
                     loop {
                         match find(s, b"EI", k) {
                             Some(e) if (e == 0 || is_ws(s[e - 1])) && (e + 2 >= s.len() || !is_regular(s[e + 2])) => { k = e + 2; break; }
@@ -1096,6 +1100,12 @@ fn page_content(pdf: &Pdf, page: u32) -> (Vec<u8>, Option<Vec<u8>>) {
     (content, resources)
 }
 
+/// The end marker of an inline image's data when its outer filter is ASCII85 (`~>`) or ASCIIHex (`>`).
+fn ascii_data_end(dict: &[u8]) -> Option<&'static [u8]> {
+    let has = |k: &[u8]| { let mut f = 0; while let Some(p) = find(dict, k, f) { let e = p + k.len(); if e >= dict.len() || !is_regular(dict[e]) { return true; } f = e; } false };
+    if has(b"/A85") || has(b"/ASCII85Decode") { Some(b"~>") } else if has(b"/AHx") || has(b"/ASCIIHexDecode") { Some(b">") } else { None }
+}
+
 /// Extract every glyph and word from a PDF's bytes.
 pub fn extract(data: &[u8]) -> Doc {
     if !data.starts_with(b"%PDF") && find(&data[..data.len().min(1024)], b"%PDF", 0).is_none() {
@@ -1206,5 +1216,38 @@ impl Doc {
                 p.n, p.glyphs.len(), unmapped, uf.join(","), invisible, json_str(&text))
         }).collect();
         format!("{{\"status\":\"{}\",\"pages\":[{}],\"fonts\":[{}]}}", self.status, pages.join(","), self.fonts_json())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// A one-page PDF with Helvetica as /F1 and the given content stream.
+    fn pdf(content: &str) -> Vec<u8> {
+        let objs = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>".to_string(),
+            format!("<< /Length {} >>\nstream\n{}\nendstream", content.len(), content),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+        ];
+        let mut out = String::from("%PDF-1.4\n");
+        let mut offs = Vec::new();
+        for (k, o) in objs.iter().enumerate() {
+            offs.push(out.len());
+            out += &format!("{} 0 obj\n{}\nendobj\n", k + 1, o);
+        }
+        let x = out.len();
+        out += &format!("xref\n0 {}\n0000000000 65535 f \n", objs.len() + 1);
+        for o in offs { out += &format!("{:010} 00000 n \n", o); }
+        out += &format!("trailer << /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objs.len() + 1, x);
+        out.into_bytes()
+    }
+
+    #[test]
+    fn ascii85_inline_data_holding_ei() {
+        // the A85 data has a line starting "EI(": stopping there opens a string that swallows the text after it
+        let d = super::extract(&pdf("BI /W 2 /H 1 /CS /G /BPC 8 /F /A85 ID ab\nEI(cd~> EI BT /F1 12 Tf 10 40 Td (Hello) Tj ET\nBI /W 2 /H 1 /CS /G /BPC 8 /F [/AHx /Fl] ID 0E\nEI(> EI BT /F1 12 Tf 10 20 Td (World) Tj ET"));
+        let words: Vec<&str> = d.pages[0].words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(words, ["Hello", "World"]);
     }
 }

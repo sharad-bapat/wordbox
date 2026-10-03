@@ -39,3 +39,9 @@ The full tools/score.py run (before is after the /Descent change):
 | Held-out: x0, x1, baseline within 1 pt | 99.98%, 99.96%, 99.86% | unchanged |
 | Held-out: pages with at least 99% found | 93.91% of 6,107 | 94.43% |
 | Verdicts, garble sets and real files | | unchanged |
+
+## Inline images with ASCII85 or ASCIIHex data (3 October 2026)
+
+wordbox skipped an inline image's data up to the first EI with whitespace before it and a delimiter after it. ASCII85 data can hold such an EI itself: on govdocs1 003961 p1 a line of the data starts "EI(", so the parser stopped there, read "(" as the start of a string, and the rest of the content stream went into it. The page came out with no words. extractor/src/lib.rs now skips to the data's own end marker first (~> for ASCII85, > for ASCIIHex) when that is the image's outer filter (ascii_data_end, ported from where-are-the-regions, with a unit test that fails without it).
+
+003961 p1 now gives 216 words, the same 216 PyMuPDF gives. Old and new output are identical on all 659 dev and 242 held-out files, so tools/score.py's numbers don't change.
