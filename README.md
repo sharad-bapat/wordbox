@@ -40,7 +40,7 @@ The rules were tuned on 659 files (ContractNLI's 375 source PDFs and 284 from go
 - On words the two tools disagree about, wordbox has 94.6% of the ones only PyMuPDF finds and 3.2% of the ones only pdfplumber finds.
 - The verdict was right on every held-out clean, private-use and control-character page (128 of each, from ToUnicode maps replaced on purpose). Letter-shifted text reads as `text`: there's no word list.
 - Speed on 61 held-out files: 0.72 ms per page natively and 1.47 in WebAssembly under Node, against PyMuPDF 1.50, pdf.js 5.05 (Node) and pdfplumber 70.4. The WebAssembly output matches the native output byte for byte.
-- The WebAssembly build is 375 KB (150 KB gzipped). That's over the 250 KB target in the plan.
+- The WebAssembly build is 382 KB (158 KB gzipped). That's over the 250 KB target in the plan.
 - Output is byte-identical across runs.
 
 ## Limits
