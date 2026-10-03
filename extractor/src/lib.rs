@@ -11,6 +11,7 @@ use std::collections::HashMap;
 mod cmap;
 mod crypt;
 mod font;
+mod outline;
 mod tables;
 mod truetype;
 
@@ -634,12 +635,16 @@ pub struct Glyph {
     /// The box's centre is outside the visible page.
     pub offpage: bool,
     pub x0: f64, pub y0: f64, pub x1: f64, pub y1: f64,
+    /// The box with the glyph's outline added, where the outline reaches past it: italic overhang,
+    /// capitals above the font's /Ascent. None when the outline is unknown or inside the box.
+    pub ink: Option<[f64; 4]>,
     /// Baseline start, in page coordinates.
     pub ox: f64, pub oy: f64,
     /// Font size on the page, in points.
     pub size: f64,
     // in default user space, for grouping: baseline start and end, unit direction, and the glyph's quad
     ux: f64, uy: f64, ex: f64, ey: f64, dx: f64, dy: f64, quad: [(f64, f64); 4],
+    ink_quad: Option<[(f64, f64); 4]>,
 }
 
 pub struct Word {
@@ -796,6 +801,11 @@ impl<'p, 'a> Run<'p, 'a> {
             let w0 = f.advance(code);
             let trm = mul(&mul(&[g.size * th, 0.0, 0.0, g.size, 0.0, g.ts], tm), &g.ctm);
             let quad = [apply(&trm, 0.0, desc), apply(&trm, w0, desc), apply(&trm, w0, asc), apply(&trm, 0.0, asc)];
+            // the outline, where it reaches past that box
+            let ink_quad = f.outline_box(code).filter(|b| b[0] < 0.0 || b[1] < desc || b[2] > w0 || b[3] > asc).map(|b| {
+                let (ix0, iy0, ix1, iy1) = (b[0].min(0.0), b[1].min(desc), b[2].max(w0), b[3].max(asc));
+                [apply(&trm, ix0, iy0), apply(&trm, ix1, iy0), apply(&trm, ix1, iy1), apply(&trm, ix0, iy1)]
+            });
             let (ux, uy) = apply(&trm, 0.0, 0.0);
             let (ex, ey) = apply(&trm, w0, 0.0);
             let dl = (trm[0] * trm[0] + trm[1] * trm[1]).sqrt();
@@ -804,7 +814,7 @@ impl<'p, 'a> Run<'p, 'a> {
             let t = f.unicode(code);
             self.out.push(Glyph {
                 mapped: t.is_some(), text: t.unwrap_or_default(), code, font: fid, invisible, annot: self.annot, offpage: false,
-                x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0, ox: 0.0, oy: 0.0, size, ux, uy, ex, ey, dx, dy, quad,
+                x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0, ink: None, ox: 0.0, oy: 0.0, size, ux, uy, ex, ey, dx, dy, quad, ink_quad,
             });
             let mut tx = w0 * g.size + g.tc;
             if f.is_word_space(code, len) { tx += g.tw; }
@@ -976,8 +986,8 @@ impl<'p, 'a> Run<'p, 'a> {
 
 fn blank(code: u32, invisible: bool, annot: bool, x: f64, y: f64) -> Glyph {
     Glyph { text: String::new(), mapped: false, code, font: u32::MAX, invisible, annot, offpage: false,
-            x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0, ox: 0.0, oy: 0.0, size: 0.0,
-            ux: x, uy: y, ex: x, ey: y, dx: 1.0, dy: 0.0, quad: [(x, y); 4] }
+            x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0, ink: None, ox: 0.0, oy: 0.0, size: 0.0,
+            ux: x, uy: y, ex: x, ey: y, dx: 1.0, dy: 0.0, quad: [(x, y); 4], ink_quad: None }
 }
 
 /// The visible page: CropBox (clipped to MediaBox) and /Rotate, as a map from default user space to
@@ -1020,9 +1030,27 @@ fn place(glyphs: &mut [Glyph], pb: &PageBox) {
         let (ox, oy) = pb.map(g.ux, g.uy);
         g.ox = ox;
         g.oy = oy;
+        g.ink = g.ink_quad.map(|q| {
+            let pts: Vec<(f64, f64)> = q.iter().map(|p| pb.map(p.0, p.1)).collect();
+            [pts.iter().map(|p| p.0).fold(f64::MAX, f64::min), pts.iter().map(|p| p.1).fold(f64::MAX, f64::min),
+             pts.iter().map(|p| p.0).fold(f64::MIN, f64::max), pts.iter().map(|p| p.1).fold(f64::MIN, f64::max)]
+        });
         let (cx, cy) = ((g.x0 + g.x1) / 2.0, (g.y0 + g.y1) / 2.0);
         g.offpage = cx < 0.0 || cy < 0.0 || cx > w || cy > h;
     }
+}
+
+/// A word's ink box: its glyphs' boxes with their outlines added, cut to the visible page, when any
+/// outline reaches past the word's own box (D101: the box and the off-page rule stay as they are).
+fn word_ink(p: &Page, w: &Word) -> Option<[f64; 4]> {
+    let gs = &p.glyphs[w.first..w.first + w.count];
+    if gs.iter().all(|g| g.ink.is_none()) { return None; }
+    let b = gs.iter().map(|g| g.ink.unwrap_or([g.x0, g.y0, g.x1, g.y1]))
+        .fold([w.x0, w.y0, w.x1, w.y1], |a, k| [a[0].min(k[0]), a[1].min(k[1]), a[2].max(k[2]), a[3].max(k[3])]);
+    let b = [b[0].max(0.0), b[1].max(0.0), b[2].min(p.width), b[3].min(p.height)];
+    if b[2] <= b[0] || b[3] <= b[1] { return None; }
+    let grown = r1(b[0]) != r1(w.x0) || r1(b[1]) != r1(w.y0) || r1(b[2]) != r1(w.x1) || r1(b[3]) != r1(w.y1);
+    if grown { Some(b) } else { None }
 }
 
 fn is_space(g: &Glyph) -> bool { g.mapped && !g.text.is_empty() && g.text.chars().all(char::is_whitespace) }
@@ -1179,9 +1207,10 @@ impl Doc {
     pub fn to_json(&self, glyphs: bool) -> String {
         let pages: Vec<String> = self.pages.iter().map(|p| {
             let words: Vec<String> = p.words.iter().map(|w| format!(
-                "{{\"t\":{},\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{},\"b\":{},\"line\":{},\"font\":{},\"size\":{}{}{}}}",
+                "{{\"t\":{},\"x0\":{},\"y0\":{},\"x1\":{},\"y1\":{},\"b\":{},\"line\":{},\"font\":{},\"size\":{}{}{}{}}}",
                 json_str(&w.text), r1(w.x0), r1(w.y0), r1(w.x1), r1(w.y1), r1(p.glyphs[w.first].oy), w.line,
                 if w.font == u32::MAX { -1 } else { w.font as i64 }, r1(w.size),
+                match word_ink(p, w) { Some(k) => format!(",\"ink\":[{},{},{},{}]", r1(k[0]), r1(k[1]), r1(k[2]), r1(k[3])), None => String::new() },
                 if w.unmapped > 0 { format!(",\"unmapped\":{}", w.unmapped) } else { String::new() },
                 flags(w.invisible, w.annot, w.offpage)
             )).collect();
@@ -1241,6 +1270,33 @@ mod tests {
         for o in offs { out += &format!("{:010} 00000 n \n", o); }
         out += &format!("trailer << /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objs.len() + 1, x);
         out.into_bytes()
+    }
+
+    fn near_box(x0: f64, y0: f64, x1: f64, y1: f64, b: [f64; 4]) -> bool {
+        (x0 - b[0]).abs() < 1e-6 && (y0 - b[1]).abs() < 1e-6 && (x1 - b[2]).abs() < 1e-6 && (y1 - b[3]).abs() < 1e-6
+    }
+
+    #[test]
+    fn a_glyph_whose_outline_reaches_out_gets_an_ink_box() {
+        // 10 pt at (100, 700): advance box x 100..105, ascent 800 and descent -200 give y 92..102 from the
+        // top; the outline adds x 99..107 and reaches y 91. The word's JSON carries both.
+        let doc = super::extract(&crate::font::tiny_truetype_pdf(Some("BT /F1 10 Tf 100 700 Td (A) Tj ET")));
+        let g = &doc.pages[0].glyphs[0];
+        assert!(near_box(g.x0, g.y0, g.x1, g.y1, [100.0, 92.0, 105.0, 102.0]), "{:?}", (g.x0, g.y0, g.x1, g.y1));
+        let k = g.ink.unwrap();
+        assert!(near_box(k[0], k[1], k[2], k[3], [99.0, 91.0, 107.0, 102.0]), "{k:?}");
+        assert!(doc.to_json(false).contains("\"x0\":100,\"y0\":92,\"x1\":105,\"y1\":102,"));
+        assert!(doc.to_json(false).contains("\"ink\":[99,91,107,102]"));
+    }
+
+    #[test]
+    fn an_ink_box_is_cut_to_the_page_and_the_offpage_rule_stays() {
+        // at x -3 the advance box is -3..2 with its centre off the page: still offpage (wordbox's rule),
+        // and the word's ink box (-4..4) is cut to 0..4 (D101)
+        let doc = super::extract(&crate::font::tiny_truetype_pdf(Some("BT /F1 10 Tf -3 700 Td (A) Tj ET")));
+        let (g, w) = (&doc.pages[0].glyphs[0], &doc.pages[0].words[0]);
+        assert!(g.offpage && w.offpage && near_box(w.x0, w.y0, w.x1, w.y1, [-3.0, 92.0, 2.0, 102.0]));
+        assert!(doc.to_json(false).contains("\"ink\":[0,91,4,102]"));
     }
 
     #[test]

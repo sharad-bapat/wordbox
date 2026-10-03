@@ -5,7 +5,11 @@
 //!   2. otherwise the font's encoding (a base encoding plus /Differences) gives a glyph name,
 //!      and the Adobe Glyph List rules turn the name into Unicode;
 //!   3. otherwise the code is unmapped. Nothing is guessed.
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use crate::cmap::{self, CMap, Space};
+use crate::outline::Outlines;
 use crate::truetype::TrueType;
 use crate::{find, get, parse_val, skip_val, skip_ws, tables, Pdf, Val};
 
@@ -35,6 +39,15 @@ pub struct Font {
     /// Type0 fonts with an embedded TrueType program: the fallback when ToUnicode lacks a code.
     cid_program: Option<CidProgram>,
     pub metrics: Metrics,
+    /// The embedded program's outlines, for ink boxes, and what decides how a code reaches a glyph.
+    outlines: Option<Outlines>,
+    symbolic: bool,
+    /// The font dictionary has an /Encoding: a simple font's codes then reach glyphs by their names.
+    has_encoding: bool,
+    /// Type0 fonts: CID -> glyph from /CIDToGIDMap; None means Identity.
+    cid_gids: Option<Vec<u16>>,
+    /// Outline boxes by code, worked out once each.
+    ink: RefCell<HashMap<u32, Option<[f64; 4]>>>,
 }
 
 struct CidProgram {
@@ -168,6 +181,19 @@ mod tests {
     }
 
     #[test]
+    fn an_embedded_truetype_glyph_has_its_outline_box() {
+        // the outline reaches left of the origin, past the 500 advance and above the 800 ascent
+        let pdf = super::tiny_truetype_pdf(None);
+        let doc = crate::Pdf::index(&pdf);
+        let d = doc.dict(1).unwrap();
+        let f = super::Font::load(&doc, &d);
+        assert!((f.advance(65) - 0.5).abs() < 1e-9);
+        let b = f.outline_box(65).unwrap();
+        assert!((b[0] + 0.1).abs() < 1e-9 && (b[1] + 0.05).abs() < 1e-9 && (b[2] - 0.7).abs() < 1e-9 && (b[3] - 0.9).abs() < 1e-9, "{b:?}");
+        assert!(f.outline_box(66).is_none());
+    }
+
+    #[test]
     fn the_symbol_fonts_have_their_own_encodings_and_widths() {
         let (t, _) = super::symbol_table("Symbol").unwrap();
         assert_eq!((t[0x6d], t[0x61]), (0x00b5, 0x03b1));
@@ -212,6 +238,83 @@ mod tests {
         assert_eq!(f.unicode(0x44).as_deref(), Some("\u{2206}"));
         assert!((f.advance(0x44) - 0.612).abs() < 1e-9);
     }
+}
+
+/// A TrueType program with one glyph, for tests: glyph 1 is a triangle (-100, -50) (700, 0) (300, 900) in a
+/// 1000-unit em, reached from code 65 by a (1,0) cmap; its advance is 500.
+#[cfg(test)]
+pub(crate) fn tiny_truetype() -> Vec<u8> {
+    let be16 = |v: i32| (v as i16 as u16).to_be_bytes().to_vec();
+    let mut head = vec![0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0x5F, 0x0F, 0x3C, 0xF5, 0, 0];
+    head.extend(be16(1000));
+    head.extend([0u8; 16]);
+    for v in [-100, -50, 700, 900, 0, 8, 2, 0, 0] { head.extend(be16(v)); }
+    let mut hhea = vec![0, 1, 0, 0];
+    for v in [800, -200, 0, 500, -100, 0, 700, 1, 0, 0, 0, 0, 0, 0, 0, 2] { hhea.extend(be16(v)); }
+    let maxp = vec![0, 0, 0x50, 0, 0, 2];
+    let mut hmtx = Vec::new();
+    for v in [500, 0, 500, -100] { hmtx.extend(be16(v)); }
+    let mut glyf = Vec::new();
+    for v in [1, -100, -50, 700, 900, 2, 0] { glyf.extend(be16(v)); }
+    glyf.extend([1u8, 1, 1]);
+    for v in [-100, 800, -400, -50, 50, 900] { glyf.extend(be16(v)); }
+    glyf.push(0);
+    let loca: Vec<u8> = [0, 0, glyf.len() as i32 / 2].iter().flat_map(|&v| be16(v)).collect();
+    let mut cmap = vec![0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 12, 0, 0, 1, 6, 0, 0];
+    let mut ids = [0u8; 256];
+    ids[65] = 1;
+    cmap.extend(ids);
+    let tables: [(&[u8; 4], Vec<u8>); 7] = [(b"cmap", cmap), (b"glyf", glyf), (b"head", head), (b"hhea", hhea), (b"hmtx", hmtx), (b"loca", loca), (b"maxp", maxp)];
+    let mut out = vec![0, 1, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0];
+    let mut off = 12 + 16 * tables.len();
+    let mut body = Vec::new();
+    for (tag, data) in &tables {
+        out.extend(tag.iter());
+        out.extend([0u8; 4]);
+        out.extend((off as u32).to_be_bytes());
+        out.extend((data.len() as u32).to_be_bytes());
+        body.extend(data);
+        while body.len() % 4 != 0 { body.push(0); }
+        off = 12 + 16 * tables.len() + body.len();
+    }
+    out.extend(body);
+    out
+}
+
+/// A one-font PDF around tiny_truetype(): object 1 the font (symbolic, no /Encoding), 2 its descriptor,
+/// 3 the program; `page` adds a page drawing `content` with the font as /F1.
+#[cfg(test)]
+pub(crate) fn tiny_truetype_pdf(content: Option<&str>) -> Vec<u8> {
+    let prog = tiny_truetype();
+    let mut s = b"%PDF-1.4
+1 0 obj << /Type /Font /Subtype /TrueType /BaseFont /ABCDEF+Tiny /FirstChar 65 /LastChar 65 /Widths [500] /FontDescriptor 2 0 R >> endobj
+".to_vec();
+    s.extend(b"2 0 obj << /Type /FontDescriptor /FontName /ABCDEF+Tiny /Flags 4 /Ascent 800 /Descent -200 /FontFile2 3 0 R >> endobj
+");
+    s.extend(format!("3 0 obj << /Length {} >> stream
+", prog.len()).as_bytes());
+    s.extend(&prog);
+    s.extend(b"
+endstream endobj
+");
+    if let Some(c) = content {
+        s.extend(b"4 0 obj << /Type /Catalog /Pages 5 0 R >> endobj
+5 0 obj << /Type /Pages /Kids [6 0 R] /Count 1 >> endobj
+");
+        s.extend(b"6 0 obj << /Type /Page /Parent 5 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 1 0 R >> >> /Contents 7 0 R >> endobj
+");
+        s.extend(format!("7 0 obj << /Length {} >> stream
+{}
+endstream endobj
+trailer << /Root 4 0 R >>
+", c.len(), c).as_bytes());
+    } else {
+        s.extend(b"trailer << >>
+");
+    }
+    s.extend(b"%%EOF
+");
+    s
 }
 
 /// Unicode for a ZapfDingbats glyph name (a1 to a191).
@@ -272,6 +375,17 @@ fn from_table(t: &[u16; 256]) -> Vec<Option<String>> {
     t.iter().map(|&u| if u == 0 { None } else { char::from_u32(u as u32).map(|c| c.to_string()) }).collect()
 }
 
+/// An embedded program's outlines from a font descriptor: /FontFile2 (TrueType), /FontFile3 with
+/// /Subtype /Type1C or /CIDFontType0C (bare CFF) or /OpenType (an sfnt).
+fn outlines_of(pdf: &Pdf, fd: &[u8]) -> Option<Outlines> {
+    if let Some(Val::Ref(n)) = get(fd, b"/FontFile2") { return Outlines::parse(pdf.stream(n)?, false); }
+    if let Some(Val::Ref(n)) = get(fd, b"/FontFile3") {
+        let open_type = pdf.dict(n).map(|d| matches!(get(&d, b"/Subtype"), Some(Val::Name(s)) if s == b"OpenType")).unwrap_or(false);
+        return Outlines::parse(pdf.stream(n)?, !open_type);
+    }
+    None
+}
+
 /// The built-in encoding in a Type1 font program's cleartext header: "dup 65 /A put" lines.
 fn type1_builtin(program: &[u8]) -> Option<Vec<Option<String>>> {
     let clear = &program[..find(program, b"eexec", 0).unwrap_or(program.len())];
@@ -311,7 +425,8 @@ impl Font {
             _ => None,
         };
         let mut f = Font { base, kind, encoding: String::new(), embedded: false, to_unicode, simple: None, spaces: Vec::new(),
-                           code_len: 1, cid_map: None, cid_program: None, metrics: Metrics::default() };
+                           code_len: 1, cid_map: None, cid_program: None, metrics: Metrics::default(),
+                           outlines: None, symbolic: false, has_encoding: false, cid_gids: None, ink: RefCell::new(HashMap::new()) };
         if kind == Kind::Type0 { f.load_type0(pdf, dict); } else { f.load_simple(pdf, dict); f.load_simple_metrics(pdf, dict); }
         f
     }
@@ -367,6 +482,27 @@ impl Font {
         w * m.fm[0]
     }
 
+    /// A glyph's outline box from the embedded program, in text space per unit font size (x0, y0, x1, y1).
+    /// None when the font has no program read here or the code reaches no glyph. A simple font's code
+    /// reaches its glyph by the encoding's glyph name (through its Unicode), or for a symbolic font with no
+    /// /Encoding by the code itself (ISO 32000-1 9.6.6.4); a Type0 font's through its CID.
+    pub fn outline_box(&self, code: u32) -> Option<[f64; 4]> {
+        let o = self.outlines.as_ref()?;
+        if let Some(b) = self.ink.borrow().get(&code) { return *b; }
+        let gid = if self.kind == Kind::Type0 {
+            let cid = match &self.cid_map { Some(c) => c.cid(code).unwrap_or(code), None => code };
+            match &self.cid_gids { Some(v) => v.get(cid as usize).copied(), None => o.by_cid(cid) }
+        } else {
+            let text = self.simple.as_ref().and_then(|t| t.get(code as usize).cloned().flatten());
+            let by_text = || text.as_deref().and_then(|s| o.by_unicode(s));
+            if self.symbolic && !self.has_encoding { o.by_code(code).or_else(by_text) } else { by_text().or_else(|| o.by_code(code)) }
+        };
+        let fm = &self.metrics.fm;
+        let b = gid.filter(|&g| g != 0).and_then(|g| o.bounds(g)).map(|b| [b[0] * fm[0], b[1] * fm[3], b[2] * fm[0], b[3] * fm[3]]);
+        self.ink.borrow_mut().insert(code, b);
+        b
+    }
+
     /// The font's descent and ascent in text space, per unit font size.
     pub fn vertical(&self) -> (f64, f64) { (self.metrics.descent * self.metrics.fm[3], self.metrics.ascent * self.metrics.fm[3]) }
 
@@ -407,13 +543,15 @@ impl Font {
         let Some(fd) = get(&cid, b"/FontDescriptor").and_then(|v| pdf.resolve(&v)) else { return };
         load_vertical(pdf, Some(&fd), &mut self.metrics);
         self.embedded = [b"/FontFile".as_slice(), b"/FontFile2", b"/FontFile3"].iter().any(|k| get(&fd, k).is_some());
+        let cid_to_gid: Option<Vec<u16>> = match get(&cid, b"/CIDToGIDMap") {
+            Some(Val::Ref(m)) => pdf.stream(m).map(|b| b.chunks(2).map(|p| if p.len() == 2 { u16::from_be_bytes([p[0], p[1]]) } else { 0 }).collect()),
+            _ => None,
+        };
+        self.outlines = outlines_of(pdf, &fd);
+        self.cid_gids = cid_to_gid.clone();
         // CIDFontType2 with a TrueType program: CID -> glyph -> Unicode, for codes ToUnicode lacks
         if let Some(Val::Ref(ff2)) = get(&fd, b"/FontFile2") {
             if let Some(tt) = pdf.stream(ff2).and_then(|p| TrueType::parse(&p)) {
-                let cid_to_gid = match get(&cid, b"/CIDToGIDMap") {
-                    Some(Val::Ref(m)) => pdf.stream(m).map(|b| b.chunks(2).map(|p| if p.len() == 2 { u16::from_be_bytes([p[0], p[1]]) } else { 0 }).collect()),
-                    _ => None,
-                };
                 self.cid_program = Some(CidProgram { tt, cid_to_gid });
             }
         }
@@ -426,6 +564,9 @@ impl Font {
         let file = |key: &[u8]| fd.as_ref().and_then(|d| match get(d, key) { Some(Val::Ref(n)) => Some(n), _ => None });
         let (ff1, ff2, ff3) = (file(b"/FontFile"), file(b"/FontFile2"), file(b"/FontFile3"));
         self.embedded = ff1.is_some() || ff2.is_some() || ff3.is_some();
+        self.symbolic = symbolic;
+        self.has_encoding = get(dict, b"/Encoding").is_some();
+        if matches!(self.kind, Kind::Type1 | Kind::TrueType) { self.outlines = fd.as_deref().and_then(|d| outlines_of(pdf, d)); }
         let bare = self.base.split('+').last().unwrap_or("").to_string();
 
         // the font's own encoding, used when /Encoding is missing or has no /BaseEncoding
