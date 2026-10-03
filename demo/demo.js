@@ -111,6 +111,11 @@ async function drawPage(page) {
   const want = index;
   page.words.forEach((w, k) => {
     if (w.offpage) return;
+    // where the letters reach past the box (italic overhangs, accents, tall symbols): their ink box, under it
+    if (w.ink) {
+      overlay.append(el('div', { class: 'wb-ink', 'aria-hidden': 'true',
+        style: `left:${w.ink[0] * scale}px;top:${w.ink[1] * scale}px;width:${(w.ink[2] - w.ink[0]) * scale}px;height:${(w.ink[3] - w.ink[1]) * scale}px` }));
+    }
     overlay.append(el('div', {
       class: `wb-box${w.annot ? ' annot' : ''}${w.invisible ? ' invisible' : ''}${w.unmapped ? ' unmapped' : ''}`,
       'data-k': k, title: w.t,

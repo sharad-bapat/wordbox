@@ -60,3 +60,16 @@ A Type 3 glyph's procedure can declare its box with d1, and that box can reach p
 | where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
 
 wordbox now covers less than the reference on no page and more on none, and no missed ink is left at the reported precision. The WebAssembly build is 521 KB (219 KB gzipped).
+
+## Held-out run (3 October 2026, wordbox 124e5a0)
+
+The same test on every 10th page of the 242 held-out files (govdocs1 thread 002), once, after tools/check_frozen.py passed. MuPDF printed "No default Layer config" for five files with optional-content layers; every page still rendered.
+
+666 pages, 0 errors.
+
+| Boxes | Pages at 100% | At 99.9% or more | Median | Worst |
+|---|---|---|---|---|
+| wordbox, with ink boxes | 663 | 664 | 100.00% | 99.88% |
+| where-are-the-regions | 663 | 664 | 100.00% | 99.88% |
+
+wordbox covers less than the reference on no page and more on none; 32,505 words on these pages have an ink box. The three pages under 100% miss the same ink with both maps.
