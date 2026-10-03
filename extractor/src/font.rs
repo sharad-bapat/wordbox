@@ -321,6 +321,18 @@ trailer << >>
     }
 
     #[test]
+    fn a_standard_font_keeps_its_widths_under_a_garbage_tounicode() {
+        // Helvetica with no /Widths and a ToUnicode sending codes 32-126 to U+E020-U+E07E: the text is
+        // garbage, but A is still drawn with Helvetica's A, 667 wide
+        let cmap = "/CIDInit /ProcSet findresource begin 12 dict begin begincmap 1 begincodespacerange <00> <FF> endcodespacerange 1 beginbfrange <20> <7E> <E020> endbfrange endcmap CMapName currentdict /CMap defineresource pop end end";
+        let pdf = format!("%PDF-1.4\n1 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 2 0 R >> endobj\n2 0 obj << /Length {} >> stream\n{}\nendstream endobj\ntrailer << >>\n%%EOF\n", cmap.len(), cmap);
+        let doc = crate::Pdf::index(pdf.as_bytes());
+        let f = super::Font::load(&doc, &doc.dict(1).unwrap());
+        assert_eq!(f.unicode(65).as_deref(), Some("\u{e041}"));
+        assert!((f.advance(65) - 0.667).abs() < 1e-9, "{}", f.advance(65));
+    }
+
+    #[test]
     fn the_symbol_fonts_have_their_own_encodings_and_widths() {
         let (t, _) = super::symbol_table("Symbol").unwrap();
         assert_eq!((t[0x6d], t[0x61]), (0x00b5, 0x03b1));
@@ -639,6 +651,13 @@ impl Font {
         }
     }
 
+    /// The character a simple font's encoding gives a code, which names the glyph drawn; else what the font
+    /// decodes the code to. Built-in widths belong to the glyph, so they're found by this and not by
+    /// ToUnicode, which can map a code to anything (a garbled text layer sends every code to private use).
+    fn glyph_char(&self, code: u32) -> Option<char> {
+        self.simple.as_ref().and_then(|t| t.get(code as usize).cloned().flatten()).or_else(|| self.unicode(code)).and_then(|s| s.chars().next())
+    }
+
     /// Advance width of a code in text space, per unit font size (ISO 32000-1 9.2.4 and 9.4.4).
     pub fn advance(&self, code: u32) -> f64 {
         let m = &self.metrics;
@@ -651,12 +670,12 @@ impl Font {
         } else if let Some((enc, ws)) = m.by_code {
             // by the glyph: the code's own width while it keeps its built-in glyph, else the width
             // of the built-in code that draws the same character (a /Differences entry moved it)
-            let u = self.unicode(code).and_then(|s| s.chars().next()).map(|c| c as u32).unwrap_or(0);
+            let u = self.glyph_char(code).map(|c| c as u32).unwrap_or(0);
             let own = enc.get(code as usize).copied().unwrap_or(0) as u32;
             let at = if u != 0 && own != u { enc.iter().position(|&e| e as u32 == u) } else { Some(code as usize) };
             match at.and_then(|i| ws.get(i)) { Some(&w) if w > 0 => w as f64, _ => m.missing }
         } else if let Some(t) = m.std {
-            let c = self.unicode(code).and_then(|s| s.chars().next());
+            let c = self.glyph_char(code);
             c.and_then(|c| t.binary_search_by_key(&c, |e| e.0).ok().map(|i| t[i].1 as f64)).unwrap_or(m.missing)
         } else if m.widths.is_empty() && m.missing == 0.0 {
             500.0 // no widths at all: half an em, a fixed default
