@@ -194,6 +194,29 @@ mod tests {
     }
 
     #[test]
+    fn an_embedded_type1_glyph_has_its_outline_box() {
+        // /FontFile: the code reaches glyph A through the program's own encoding (symbolic, no /Encoding)
+        let prog = crate::type1::tests::tiny_type1();
+        let mut pdf = b"%PDF-1.4
+1 0 obj << /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+Tiny /FirstChar 65 /LastChar 65 /Widths [500] /FontDescriptor 2 0 R >> endobj
+".to_vec();
+        pdf.extend(b"2 0 obj << /Type /FontDescriptor /Flags 4 /Ascent 800 /Descent -200 /FontFile 3 0 R >> endobj
+");
+        pdf.extend(format!("3 0 obj << /Length {} >> stream
+", prog.len()).as_bytes());
+        pdf.extend(&prog);
+        pdf.extend(b"
+endstream endobj
+trailer << >>
+%%EOF
+");
+        let doc = crate::Pdf::index(&pdf);
+        let f = super::Font::load(&doc, &doc.dict(1).unwrap());
+        let b = f.outline_box(65).unwrap();
+        assert!((b[0] + 0.1).abs() < 1e-9 && (b[1] + 0.05).abs() < 1e-9 && (b[2] - 0.7).abs() < 1e-9 && (b[3] - 0.9).abs() < 1e-9, "{b:?}");
+    }
+
+    #[test]
     fn the_symbol_fonts_have_their_own_encodings_and_widths() {
         let (t, _) = super::symbol_table("Symbol").unwrap();
         assert_eq!((t[0x6d], t[0x61]), (0x00b5, 0x03b1));
@@ -376,8 +399,9 @@ fn from_table(t: &[u16; 256]) -> Vec<Option<String>> {
 }
 
 /// An embedded program's outlines from a font descriptor: /FontFile2 (TrueType), /FontFile3 with
-/// /Subtype /Type1C or /CIDFontType0C (bare CFF) or /OpenType (an sfnt).
+/// /Subtype /Type1C or /CIDFontType0C (bare CFF) or /OpenType (an sfnt), and /FontFile (Type 1).
 fn outlines_of(pdf: &Pdf, fd: &[u8]) -> Option<Outlines> {
+    if let Some(Val::Ref(n)) = get(fd, b"/FontFile") { return Outlines::type1(&pdf.stream(n)?); }
     if let Some(Val::Ref(n)) = get(fd, b"/FontFile2") { return Outlines::parse(pdf.stream(n)?, false); }
     if let Some(Val::Ref(n)) = get(fd, b"/FontFile3") {
         let open_type = pdf.dict(n).map(|d| matches!(get(&d, b"/Subtype"), Some(Val::Name(s)) if s == b"OpenType")).unwrap_or(false);

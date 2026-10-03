@@ -14,6 +14,7 @@ mod font;
 mod outline;
 mod tables;
 mod truetype;
+mod type1;
 
 pub use font::Kind;
 
