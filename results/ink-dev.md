@@ -48,3 +48,15 @@ A font that isn't embedded is drawn by the reader with a standard font in its pl
 | where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
 
 wordbox covers less than the reference on 3 pages (32 before): the three Type 3 pages in the baseline. The WebAssembly build is now 520 KB (218 KB gzipped).
+
+## Type 3 glyph boxes (3 October 2026)
+
+A Type 3 glyph's procedure can declare its box with d1, and that box can reach past the glyph's advance: on 001494 and 001157 most codes have a width of 0 and still draw. The d1 box now goes into the word's ink box. It goes into "ink" only, so the word's own box stays the advance box and every other field is unchanged on all 659 dev files. Where-are-the-regions grows the box itself instead; doing that here would change x0 to y1 of Type 3 words and need a full rescore (the place to change is commented in extractor/src/lib.rs, at the glyph_box call). 484,168 words now have an ink box.
+
+| Boxes | Pages at 100% | At 99.9% or more | Median | Worst |
+|---|---|---|---|---|
+| wordbox, plus standard boxes | 971 | 976 | 100.00% | 85.19% |
+| wordbox, plus Type 3 boxes | 974 | 979 | 100.00% | 99.98% |
+| where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
+
+wordbox now covers less than the reference on no page and more on none, and no missed ink is left at the reported precision. The WebAssembly build is 521 KB (219 KB gzipped).

@@ -803,8 +803,11 @@ impl<'p, 'a> Run<'p, 'a> {
             let w0 = f.advance(code);
             let trm = mul(&mul(&[g.size * th, 0.0, 0.0, g.size, 0.0, g.ts], tm), &g.ctm);
             let quad = [apply(&trm, 0.0, desc), apply(&trm, w0, desc), apply(&trm, w0, asc), apply(&trm, 0.0, asc)];
-            // the outline, where it reaches past that box
-            let ink_quad = f.outline_box(code).filter(|b| b[0] < 0.0 || b[1] < desc || b[2] > w0 || b[3] > asc).map(|b| {
+            // the outline, where it reaches past that box. A Type3 glyph's d1 box counts as its outline
+            // and goes into the ink box only, so the box stays the advance box. where-are-the-regions
+            // grows the box itself instead; to do that here, grow (0, desc, w0, asc) by f.glyph_box(code)
+            // before `quad` is built, and rescore, since x0..y1 of Type3 words would change.
+            let ink_quad = f.outline_box(code).or_else(|| f.glyph_box(code)).filter(|b| b[0] < 0.0 || b[1] < desc || b[2] > w0 || b[3] > asc).map(|b| {
                 let (ix0, iy0, ix1, iy1) = (b[0].min(0.0), b[1].min(desc), b[2].max(w0), b[3].max(asc));
                 [apply(&trm, ix0, iy0), apply(&trm, ix1, iy0), apply(&trm, ix1, iy1), apply(&trm, ix0, iy1)]
             });
@@ -1299,6 +1302,18 @@ mod tests {
         let (g, w) = (&doc.pages[0].glyphs[0], &doc.pages[0].words[0]);
         assert!(g.offpage && w.offpage && near_box(w.x0, w.y0, w.x1, w.y1, [-3.0, 92.0, 2.0, 102.0]));
         assert!(doc.to_json(false).contains("\"ink\":[0,91,4,102]"));
+    }
+
+    #[test]
+    fn a_type3_glyph_drawn_past_a_zero_width_gets_an_ink_box() {
+        // width 0, d1 box 0 -50 500 700, /FontBBox 0 -100 600 800, 10 pt at (100, 700) on an 800 pt page:
+        // the box stays the zero-width advance box (x 100, y 92..101), the d1 box goes into "ink"
+        let proc = "0 0 0 -50 500 700 d1\n0 0 500 700 re f\n";
+        let pdf = format!("%PDF-1.4\n1 0 obj << /Type /Font /Subtype /Type3 /FontBBox [0 -100 600 800] /FontMatrix [0.001 0 0 0.001 0 0] /FirstChar 65 /LastChar 65 /Widths [0] /Encoding << /Differences [65 /g1] >> /CharProcs << /g1 2 0 R >> >> endobj\n2 0 obj << /Length {} >> stream\n{}endstream endobj\n3 0 obj << /Type /Catalog /Pages 4 0 R >> endobj\n4 0 obj << /Type /Pages /Kids [5 0 R] /Count 1 >> endobj\n5 0 obj << /Type /Page /Parent 4 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 1 0 R >> >> /Contents 6 0 R >> endobj\n6 0 obj << /Length 34 >> stream\nBT /F1 10 Tf 100 700 Td (A) Tj ET\nendstream endobj\ntrailer << /Root 3 0 R >>\n%%EOF\n", proc.len(), proc);
+        let doc = super::extract(pdf.as_bytes());
+        let json = doc.to_json(false);
+        assert!(json.contains("\"x0\":100,\"y0\":92,\"x1\":100,\"y1\":101,"), "{json}");
+        assert!(json.contains("\"ink\":[100,92,105,101]"), "{json}");
     }
 
     #[test]

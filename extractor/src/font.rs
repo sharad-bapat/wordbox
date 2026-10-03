@@ -75,6 +75,8 @@ pub struct Metrics {
     descent: f64,
     /// Glyph space to text space: 0.001 for all fonts but Type3.
     fm: [f64; 6],
+    /// Type3 fonts: each code's glyph box from its procedure's d1 operands, in glyph space.
+    t3_boxes: Vec<Option<[f64; 4]>>,
     /// Where the widths came from, for reports: "Widths", "W", "standard font", "default".
     pub source: &'static str,
 }
@@ -82,7 +84,7 @@ pub struct Metrics {
 impl Default for Metrics {
     fn default() -> Self {
         Metrics { first_char: 0, widths: Vec::new(), missing: 0.0, std: None, by_code: None, dw: 1000.0, w: Vec::new(),
-                  ascent: 800.0, descent: -200.0, fm: [0.001, 0.0, 0.0, 0.001, 0.0, 0.0], source: "default" }
+                  ascent: 800.0, descent: -200.0, fm: [0.001, 0.0, 0.0, 0.001, 0.0, 0.0], t3_boxes: Vec::new(), source: "default" }
     }
 }
 
@@ -305,6 +307,20 @@ trailer << >>
     }
 
     #[test]
+    fn a_type3_glyph_box_comes_from_d1() {
+        // /Widths gives the code 0 but its procedure draws a 500 x 700 box (as on govdocs1 004050)
+        let proc = "0 0 0 -50 500 700 d1\n0 0 500 700 re f\n";
+        let pdf = format!("%PDF-1.4\n1 0 obj << /Type /Font /Subtype /Type3 /FontBBox [0 -100 600 800] /FontMatrix [0.001 0 0 0.001 0 0] /FirstChar 65 /LastChar 65 /Widths [0] /Encoding << /Differences [65 /g1] >> /CharProcs << /g1 2 0 R >> >> endobj\n2 0 obj << /Length {} >> stream\n{}endstream endobj\ntrailer << >>\n%%EOF\n", proc.len(), proc);
+        let doc = crate::Pdf::index(pdf.as_bytes());
+        let d = doc.dict(1).unwrap();
+        let f = super::Font::load(&doc, &d);
+        assert_eq!(f.advance(65), 0.0);
+        let b = f.glyph_box(65).unwrap();
+        assert!((b[0]).abs() < 1e-9 && (b[1] + 0.05).abs() < 1e-9 && (b[2] - 0.5).abs() < 1e-9 && (b[3] - 0.7).abs() < 1e-9);
+        assert!(f.glyph_box(66).is_none());
+    }
+
+    #[test]
     fn the_symbol_fonts_have_their_own_encodings_and_widths() {
         let (t, _) = super::symbol_table("Symbol").unwrap();
         assert_eq!((t[0x6d], t[0x61]), (0x00b5, 0x03b1));
@@ -426,6 +442,54 @@ trailer << /Root 4 0 R >>
     s.extend(b"%%EOF
 ");
     s
+}
+
+/// A Type3 font's glyph boxes by code: /Encoding's /Differences names each code's glyph, /CharProcs
+/// holds its procedure, and a procedure starting "wx wy llx lly urx ury d1" gives the box (ISO 32000-1
+/// 9.6.5). d0 (a coloured glyph) gives none.
+fn type3_boxes(pdf: &Pdf, dict: &[u8]) -> Vec<Option<[f64; 4]>> {
+    let mut out = vec![None; 256];
+    let Some(procs) = get(dict, b"/CharProcs").and_then(|v| pdf.resolve(&v)) else { return out };
+    let enc = match get(dict, b"/Encoding").map(|v| pdf.direct(v)) { Some(Val::Dict(d)) => d, _ => return out };
+    let Some(Val::Array(diff)) = get(&enc, b"/Differences").map(|v| pdf.direct(v)) else { return out };
+    let (mut code, mut i) = (0usize, 0usize);
+    while i < diff.len() {
+        i = skip_ws(&diff, i);
+        if i >= diff.len() { break; }
+        match parse_val(&diff, i) {
+            Val::Num(n) => code = n as usize,
+            Val::Name(nm) => {
+                if code < 256 {
+                    let mut key = vec![b'/'];
+                    key.extend_from_slice(&nm);
+                    if let Some(Val::Ref(n)) = get(&procs, &key) {
+                        out[code] = pdf.stream(n).and_then(|s| d1_box(&s));
+                    }
+                }
+                code += 1;
+            }
+            _ => {}
+        }
+        i = skip_val(&diff, i).max(i + 1);
+    }
+    out
+}
+
+/// The box of a glyph procedure that starts with the d1 operator.
+fn d1_box(s: &[u8]) -> Option<[f64; 4]> {
+    let mut nums = Vec::new();
+    for tok in s.split(|b| b.is_ascii_whitespace()).filter(|t| !t.is_empty()) {
+        if tok == b"d1" {
+            if nums.len() < 6 { return None; }
+            let v = &nums[nums.len() - 4..];
+            return Some([v[0], v[1], v[2], v[3]]);
+        }
+        match std::str::from_utf8(tok).ok().and_then(|t| t.parse::<f64>().ok()) {
+            Some(x) => nums.push(x),
+            None => return None,
+        }
+    }
+    None
 }
 
 /// Unicode for a ZapfDingbats glyph name (a1 to a191).
@@ -556,6 +620,7 @@ impl Font {
             let bb = numbers(pdf, get(dict, b"/FontBBox"));
             if bb.len() == 4 && bb[3] > bb[1] { m.ascent = bb[3]; m.descent = bb[1].min(0.0); }
             else { m.ascent = 0.8 / m.fm[3].abs().max(1e-9); m.descent = -0.2 / m.fm[3].abs().max(1e-9); }
+            m.t3_boxes = type3_boxes(pdf, dict);
         } else {
             if m.widths.is_empty() {
                 let bare = self.base.rsplit('+').next().unwrap_or("");
@@ -599,6 +664,15 @@ impl Font {
             m.missing
         };
         w * m.fm[0]
+    }
+
+    /// A Type3 glyph's box from its d1 operands, in text space per unit font size (x0, y0, x1, y1).
+    /// It can reach past the advance: some fonts give most codes a width of 0 and still draw them.
+    pub fn glyph_box(&self, code: u32) -> Option<[f64; 4]> {
+        let b = (*self.metrics.t3_boxes.get(code as usize)?)?;
+        let fm = &self.metrics.fm;
+        let (xa, xb, ya, yb) = (b[0] * fm[0], b[2] * fm[0], b[1] * fm[3], b[3] * fm[3]);
+        Some([xa.min(xb), ya.min(yb), xa.max(xb), ya.max(yb)])
     }
 
     /// A glyph's outline box from the embedded program, in text space per unit font size (x0, y0, x1, y1).
