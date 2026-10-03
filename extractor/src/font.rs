@@ -50,6 +50,8 @@ pub struct Metrics {
     widths: Vec<f64>,
     missing: f64,
     std: Option<&'static [(char, u16)]>,
+    /// Symbol and ZapfDingbats: their built-in encoding (code -> Unicode) and widths by that code.
+    by_code: Option<(&'static [u16; 256], &'static [u16; 256])>,
     dw: f64,
     /// CID ranges (first, last, width), sorted by first.
     w: Vec<(u32, u32, f64)>,
@@ -63,7 +65,7 @@ pub struct Metrics {
 
 impl Default for Metrics {
     fn default() -> Self {
-        Metrics { first_char: 0, widths: Vec::new(), missing: 0.0, std: None, dw: 1000.0, w: Vec::new(),
+        Metrics { first_char: 0, widths: Vec::new(), missing: 0.0, std: None, by_code: None, dw: 1000.0, w: Vec::new(),
                   ascent: 800.0, descent: -200.0, fm: [0.001, 0.0, 0.0, 0.001, 0.0, 0.0], source: "default" }
     }
 }
@@ -164,6 +166,59 @@ mod tests {
         assert_eq!(vertical_from(0.0, 0.0, &[0.0, -250.0, 1000.0, 900.0]), Some((900.0, -250.0)));
         assert_eq!(vertical_from(0.0, 0.0, &[]), None);
     }
+
+    #[test]
+    fn the_symbol_fonts_have_their_own_encodings_and_widths() {
+        let (t, _) = super::symbol_table("Symbol").unwrap();
+        assert_eq!((t[0x6d], t[0x61]), (0x00b5, 0x03b1));
+        assert_eq!(super::symbol_widths("Symbol").unwrap()[0x6d], 576);
+        let (z, _) = super::symbol_table("ABCDEF+ZapfDingbats".rsplit('+').next().unwrap()).unwrap();
+        assert_eq!((z[0x21], z[0x6c]), (0x2701, 0x25cf));
+        assert_eq!(super::symbol_widths("ZapfDingbats").unwrap()[0x21], 974);
+        assert!(super::symbol_table("Helvetica").is_none());
+    }
+
+    #[test]
+    fn a_moved_symbol_glyph_keeps_its_width() {
+        // a Symbol font whose /Differences puts the bullet (built-in 0xB7) at code 0x3F
+        let pdf = b"%PDF-1.4\n1 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Symbol /Encoding << /Differences [63 /bullet] >> >> endobj\ntrailer << >>\n%%EOF\n";
+        let doc = crate::Pdf::index(pdf);
+        let d = doc.dict(1).unwrap();
+        let f = super::Font::load(&doc, &d);
+        assert_eq!(f.unicode(0x3f).as_deref(), Some("\u{2022}"));
+        assert!((f.advance(0x3f) - 0.460).abs() < 1e-9);
+        // an untouched code keeps its own width: 0x6D is mu, 576
+        assert!((f.advance(0x6d) - 0.576).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_zapf_dingbats_name_in_differences_decodes() {
+        // /Differences [1 /space /a73] puts the black square (built-in 0x6E, 761) at code 2
+        let pdf = b"%PDF-1.4\n1 0 obj << /Type /Font /Subtype /Type1 /BaseFont /ZapfDingbats /Encoding << /Differences [1 /space /a73] >> >> endobj\ntrailer << >>\n%%EOF\n";
+        let doc = crate::Pdf::index(pdf);
+        let d = doc.dict(1).unwrap();
+        let f = super::Font::load(&doc, &d);
+        assert_eq!(f.unicode(2).as_deref(), Some("\u{25a0}"));
+        assert!((f.advance(2) - 0.761).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_truetype_symbol_with_no_program_is_the_standard_symbol() {
+        // /Subtype /TrueType /BaseFont /Symbol, nothing embedded, no /Encoding: 0x44 is Delta, U+2206 in the built-in table (612)
+        let pdf = b"%PDF-1.4\n1 0 obj << /Type /Font /Subtype /TrueType /BaseFont /Symbol >> endobj\ntrailer << >>\n%%EOF\n";
+        let doc = crate::Pdf::index(pdf);
+        let d = doc.dict(1).unwrap();
+        let f = super::Font::load(&doc, &d);
+        assert_eq!(f.unicode(0x44).as_deref(), Some("\u{2206}"));
+        assert!((f.advance(0x44) - 0.612).abs() < 1e-9);
+    }
+}
+
+/// Unicode for a ZapfDingbats glyph name (a1 to a191).
+fn zapf_unicode(name: &[u8]) -> Option<String> {
+    let name = std::str::from_utf8(name).ok()?;
+    let k = tables::ZAPF_NAMES.binary_search_by(|(n, _)| n.cmp(&name)).ok()?;
+    char::from_u32(tables::ZAPF_NAMES[k].1 as u32).map(|c| c.to_string())
 }
 
 /// Unicode for a glyph name, by the Adobe Glyph List specification's rules.
@@ -197,6 +252,20 @@ fn base_table(name: &[u8]) -> Option<(&'static [u16; 256], &'static str)> {
         b"StandardEncoding" => Some((&tables::STANDARD, "Standard")),
         _ => None,
     }
+}
+
+/// The standard Symbol and ZapfDingbats fonts have built-in encodings of their own (ISO 32000-1
+/// 9.6.6.1), not StandardEncoding.
+fn is_symbol(bare: &str) -> Option<bool> {
+    if bare.starts_with("ZapfDingbats") { Some(true) } else if bare.starts_with("Symbol") { Some(false) } else { None }
+}
+
+fn symbol_table(bare: &str) -> Option<(&'static [u16; 256], &'static str)> {
+    is_symbol(bare).map(|z| if z { (&tables::ZAPF_DINGBATS, "ZapfDingbats (built-in)") } else { (&tables::SYMBOL, "Symbol (built-in)") })
+}
+
+fn symbol_widths(bare: &str) -> Option<&'static [u16; 256]> {
+    is_symbol(bare).map(|z| if z { &tables::ZAPF_DINGBATS_WIDTHS } else { &tables::SYMBOL_WIDTHS })
 }
 
 fn from_table(t: &[u16; 256]) -> Vec<Option<String>> {
@@ -262,8 +331,10 @@ impl Font {
             else { m.ascent = 0.8 / m.fm[3].abs().max(1e-9); m.descent = -0.2 / m.fm[3].abs().max(1e-9); }
         } else {
             if m.widths.is_empty() {
-                m.std = std_widths(&self.base);
-                if m.std.is_some() { m.source = "standard font"; }
+                let bare = self.base.rsplit('+').next().unwrap_or("");
+                m.by_code = symbol_table(bare).map(|(t, _)| t).zip(symbol_widths(bare));
+                m.std = if m.by_code.is_some() { None } else { std_widths(&self.base) };
+                if m.std.is_some() || m.by_code.is_some() { m.source = "standard font"; }
             }
             load_vertical(pdf, fd.as_deref(), m);
         }
@@ -278,6 +349,13 @@ impl Font {
             match k.checked_sub(1).map(|i| m.w[i]) { Some((_, last, w)) if cid <= last => w, _ => m.dw }
         } else if code >= m.first_char && ((code - m.first_char) as usize) < m.widths.len() {
             m.widths[(code - m.first_char) as usize]
+        } else if let Some((enc, ws)) = m.by_code {
+            // by the glyph: the code's own width while it keeps its built-in glyph, else the width
+            // of the built-in code that draws the same character (a /Differences entry moved it)
+            let u = self.unicode(code).and_then(|s| s.chars().next()).map(|c| c as u32).unwrap_or(0);
+            let own = enc.get(code as usize).copied().unwrap_or(0) as u32;
+            let at = if u != 0 && own != u { enc.iter().position(|&e| e as u32 == u) } else { Some(code as usize) };
+            match at.and_then(|i| ws.get(i)) { Some(&w) if w > 0 => w as f64, _ => m.missing }
         } else if let Some(t) = m.std {
             let c = self.unicode(code).and_then(|s| s.chars().next());
             c.and_then(|c| t.binary_search_by_key(&c, |e| e.0).ok().map(|i| t[i].1 as f64)).unwrap_or(m.missing)
@@ -349,18 +427,23 @@ impl Font {
         let (ff1, ff2, ff3) = (file(b"/FontFile"), file(b"/FontFile2"), file(b"/FontFile3"));
         self.embedded = ff1.is_some() || ff2.is_some() || ff3.is_some();
         let bare = self.base.split('+').last().unwrap_or("").to_string();
-        let standard_symbol = bare.starts_with("Symbol") || bare.starts_with("ZapfDingbats");
 
         // the font's own encoding, used when /Encoding is missing or has no /BaseEncoding
         let builtin = |this: &Font| -> (Option<Vec<Option<String>>>, String) {
             match this.kind {
                 Kind::Type1 => {
                     if let Some(t) = ff1.and_then(|n| pdf.stream(n)).and_then(|p| type1_builtin(&p)) { return (Some(t), "font program".into()); }
-                    if standard_symbol { return (None, "built-in symbol (not supported)".into()); }
+                    if let Some((t, d)) = symbol_table(&bare) { return (Some(from_table(t)), d.into()); }
                     (Some(from_table(&tables::STANDARD)), "Standard".into())
                 }
-                Kind::TrueType if symbolic => (None, "built-in symbolic".into()),
-                Kind::TrueType => (Some(from_table(&tables::WIN_ANSI)), "WinAnsi (default)".into()),
+                Kind::TrueType => {
+                    // a TrueType font named Symbol or ZapfDingbats with no program of its own is the standard
+                    // font, substituted: its built-in encoding applies, as for Type 1
+                    if !this.embedded {
+                        if let Some((t, d)) = symbol_table(&bare) { return (Some(from_table(t)), d.into()); }
+                    }
+                    if symbolic { (None, "built-in symbolic".into()) } else { (Some(from_table(&tables::WIN_ANSI)), "WinAnsi (default)".into()) }
+                }
                 _ => (None, "none".into()),
             }
         };
@@ -380,6 +463,7 @@ impl Font {
         if let Some(Val::Dict(d)) = &enc {
             if let Some(Val::Array(diff)) = get(d, b"/Differences").map(|v| pdf.direct(v)) {
                 let t = table.get_or_insert_with(|| vec![None; 256]);
+                let zapf = is_symbol(&bare) == Some(true);
                 let mut code = 0usize;
                 let mut i = 0;
                 while i < diff.len() {
@@ -387,7 +471,11 @@ impl Font {
                     if i >= diff.len() { break; }
                     match parse_val(&diff, i) {
                         Val::Num(n) => code = n as usize,
-                        Val::Name(nm) => { if code < 256 { t[code] = glyph_unicode(&nm); } code += 1; }
+                        Val::Name(nm) => {
+                            // a ZapfDingbats font names its glyphs a1 to a191 (Adobe zapfdingbats.txt)
+                            if code < 256 { t[code] = if zapf { zapf_unicode(&nm).or_else(|| glyph_unicode(&nm)) } else { glyph_unicode(&nm) }; }
+                            code += 1;
+                        }
                         _ => {}
                     }
                     i = skip_val(&diff, i).max(i + 1);

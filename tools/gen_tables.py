@@ -4,6 +4,10 @@
 - The Adobe Glyph List (glyph name -> Unicode), from pdfminer/glyphlist.py.
 - The widths of the 14 standard fonts (Adobe AFM files), from pdfminer/fontmetrics.py.
 - The 258 standard Macintosh glyph names, from fontTools (MIT).
+- The built-in encodings and widths of Symbol and ZapfDingbats, by character code: glyph names and
+  widths from the Adobe AFM files as carried by reportlab (pdfbase/_fontdata.py), names to Unicode
+  from the glyph list above and, for ZapfDingbats' a1 to a191, Adobe's zapfdingbats.txt
+  (tools/data/, BSD licence, kept whole).
 
 Run: python tools/gen_tables.py > extractor/src/tables.rs
 The output is committed, so building never needs Python.
@@ -71,4 +75,42 @@ out.write('\n/// The 258 standard Macintosh glyph names used by TrueType post ta
 out.write(f'pub static MAC_GLYPHS: [&str; {len(standardGlyphOrder)}] = [\n')
 for i in range(0, len(standardGlyphOrder), 8):
     out.write('    ' + ', '.join(rust_str(n) for n in standardGlyphOrder[i:i + 8]) + ',\n')
+out.write('];\n')
+
+# Symbol and ZapfDingbats have their own built-in encodings, so their widths are kept by code.
+from pathlib import Path
+from reportlab.pdfbase._fontdata import encodings, widthsByFontGlyph
+zapf = {}
+for line in open(Path(__file__).parent / 'data' / 'zapfdingbats.txt', encoding='utf-8'):
+    if line.startswith('#') or not line.strip():
+        continue
+    n, u = line.strip().split(';')
+    zapf[n] = int(u, 16)
+out.write('\n// ZapfDingbats names to Unicode: Adobe zapfdingbats.txt, Copyright 2002-2019 Adobe, BSD licence\n')
+out.write('// (the full notice is in tools/data/zapfdingbats.txt).\n')
+for label, enc, font in (('SYMBOL', 'SymbolEncoding', 'Symbol'), ('ZAPF_DINGBATS', 'ZapfDingbatsEncoding', 'ZapfDingbats')):
+    names = encodings[enc]
+    widths = widthsByFontGlyph[font]
+    codes, ws = [0] * 256, [0] * 256
+    for code, n in enumerate(names):
+        if not n:
+            continue
+        # ZapfDingbats' own names first; its space is in the main glyph list
+        agl = glyphname2unicode.get(n, '')
+        u = zapf[n] if font == 'ZapfDingbats' and n in zapf else (ord(agl) if len(agl) == 1 else None)
+        if u is None or u > 0xffff:
+            sys.exit(f'no single BMP code point for {font} {n}')
+        codes[code], ws[code] = u, int(widths[n])
+    for suffix, t, what in (('', codes, 'code -> Unicode scalar (0 = no glyph)'), ('_WIDTHS', ws, 'code -> width in 1/1000 em (0 = no glyph)')):
+        out.write(f'\n/// {font} built-in encoding: {what}.\n')
+        out.write(f'pub static {label}{suffix}: [u16; 256] = [\n')
+        for i in range(0, 256, 16):
+            out.write('    ' + ', '.join(f'0x{c:04x}' if not suffix else str(c) for c in t[i:i + 16]) + ',\n')
+        out.write('];\n')
+
+# a ZapfDingbats font's /Differences names its glyphs a1 to a191, which aren't in the main glyph list
+out.write('\n/// ZapfDingbats glyph names (a1 to a191) -> Unicode scalar, sorted by name for binary search.\n')
+out.write(f'pub static ZAPF_NAMES: [(&str, u16); {len(zapf)}] = [\n')
+for n in sorted(zapf):
+    out.write(f'    ({rust_str(n)}, 0x{zapf[n]:04x}),\n')
 out.write('];\n')

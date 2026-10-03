@@ -1,6 +1,6 @@
 target/
 wasm-pkg/
-data/
+/data/
 __pycache__/
 .venv/
 node_modules/
