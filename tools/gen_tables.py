@@ -8,6 +8,8 @@
   widths from the Adobe AFM files as carried by reportlab (pdfbase/_fontdata.py), names to Unicode
   from the glyph list above and, for ZapfDingbats' a1 to a191, Adobe's zapfdingbats.txt
   (tools/data/, BSD licence, kept whole).
+- The glyph boxes of the 14 standard fonts, from Adobe's core-14 AFM files (tools/data/afm, with their
+  readme.txt and notices).
 
 Run: python tools/gen_tables.py > extractor/src/tables.rs
 The output is committed, so building never needs Python.
@@ -113,4 +115,30 @@ out.write('\n/// ZapfDingbats glyph names (a1 to a191) -> Unicode scalar, sorted
 out.write(f'pub static ZAPF_NAMES: [(&str, u16); {len(zapf)}] = [\n')
 for n in sorted(zapf):
     out.write(f'    ({rust_str(n)}, 0x{zapf[n]:04x}),\n')
+out.write('];\n')
+
+# Glyph boxes of the 14 standard fonts (the B field of each C line), from Adobe's core-14 AFM files in
+# tools/data/afm (copied from Matplotlib's mpl-data/fonts/pdfcorefonts with their readme.txt, whose
+# licence lets them be used and copied with the notices kept). Keyed by character like the widths:
+# names to Unicode by the glyph list, and ZapfDingbats' a1 to a191 by zapfdingbats.txt.
+out.write('\n/// Glyph boxes of the 14 standard fonts, per character, in 1/1000 em: (x0, y0, x1, y1), from\n')
+out.write("/// Adobe's core-14 AFM files (tools/data/afm, Copyright Adobe Systems, notices in readme.txt).\n")
+out.write('/// Sorted by font name, each font by character.\n')
+afms = sorted((Path(__file__).parent / 'data' / 'afm').glob('*.afm'))
+out.write(f'pub static STANDARD_BOXES: [(&str, &[(char, [i16; 4])]); {len(afms)}] = [\n')
+for afm in sorted(afms, key=lambda p: p.stem):
+    boxes = {}
+    for line in open(afm, encoding='latin-1'):
+        if not line.startswith('C '):
+            continue
+        f = {p.split()[0]: p.split()[1:] for p in line.split(';') if p.strip()}
+        n = f['N'][0]
+        u = zapf.get(n) if afm.stem == 'ZapfDingbats' else None
+        if u is None:
+            agl = glyphname2unicode.get(n, '')
+            u = ord(agl) if len(agl) == 1 else None
+        if u is not None:
+            boxes.setdefault(u, [int(v) for v in f['B']])
+    body = ', '.join(f"('\\u{{{c:x}}}', [{b[0]}, {b[1]}, {b[2]}, {b[3]}])" for c, b in sorted(boxes.items()))
+    out.write(f'    ({rust_str(afm.stem)}, &[{body}]),\n')
 out.write('];\n')

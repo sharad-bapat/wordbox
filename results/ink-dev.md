@@ -36,3 +36,15 @@ extractor/src/type1.rs reads embedded Type 1 programs (FontFile: eexec, Subrs an
 | where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
 
 wordbox covers less than the reference on 32 pages (50 before). The WebAssembly build is now 466 KB (192 KB gzipped).
+
+## Standard glyph boxes for fonts with no program (3 October 2026)
+
+A font that isn't embedded is drawn by the reader with a standard font in its place. For those, the glyph's ink box now comes from that font's box in Adobe's core-14 AFM files (tools/data/afm), chosen the way MuPDF 1.24 chooses: the 14 standard names and their Windows spellings as they are, any other font by its flags (fixed pitch, serif, bold, italic) and stretched along x to the file's width. Ported from where-are-the-regions. Every other field is still unchanged on all 659 dev files; 474,443 words now have an ink box.
+
+| Boxes | Pages at 100% | At 99.9% or more | Median | Worst |
+|---|---|---|---|---|
+| wordbox, embedded programs | 942 | 976 | 100.00% | 85.19% |
+| wordbox, plus standard boxes | 971 | 976 | 100.00% | 85.19% |
+| where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
+
+wordbox covers less than the reference on 3 pages (32 before): the three Type 3 pages in the baseline. The WebAssembly build is now 520 KB (218 KB gzipped).

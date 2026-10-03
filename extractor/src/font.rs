@@ -48,6 +48,9 @@ pub struct Font {
     cid_gids: Option<Vec<u16>>,
     /// Outline boxes by code, worked out once each.
     ink: RefCell<HashMap<u32, Option<[f64; 4]>>>,
+    /// A font that isn't embedded: the glyph boxes and widths of the standard font MuPDF draws in its
+    /// place, and whether it stretches each glyph to the file's width (only for a substitute).
+    afm: Option<(&'static [(char, [i16; 4])], &'static [(char, u16)], bool)>,
 }
 
 struct CidProgram {
@@ -133,12 +136,53 @@ fn cid_widths(pdf: &Pdf, v: Option<Val>) -> Vec<(u32, u32, f64)> {
 
 /// Built-in widths of a standard font, by base name (subset prefix and common Windows spellings allowed).
 fn std_widths(base: &str) -> Option<&'static [(char, u16)]> {
+    std_key(base).map(|i| tables::STANDARD_WIDTHS[i].1)
+}
+
+/// The entry of STANDARD_WIDTHS a base name stands for. By index, not by table: fonts with the same
+/// widths (Arial,Bold and Arial,BoldItalic) can share one table in the binary.
+fn std_key(base: &str) -> Option<usize> {
     let bare = base.rsplit('+').next().unwrap_or(base);
-    let find = |n: &str| tables::STANDARD_WIDTHS.binary_search_by(|(k, _)| k.cmp(&n)).ok().map(|i| tables::STANDARD_WIDTHS[i].1);
-    if let Some(w) = find(bare) { return Some(w); }
+    let find = |n: &str| tables::STANDARD_WIDTHS.binary_search_by(|(k, _)| k.cmp(&n)).ok();
+    if let Some(i) = find(bare) { return Some(i); }
     // ArialMT, Arial-BoldMT, TimesNewRomanPSMT, TimesNewRomanPS-BoldItalicMT, CourierNewPSMT -> Arial,Bold etc.
     let s = bare.replace("PSMT", "").replace("PS-", "-").replace("MT", "").replace("PS", "");
     find(&s).or_else(|| find(&s.replacen('-', ",", 1)))
+}
+
+/// The standard font a base name stands for when it isn't embedded, as MuPDF 1.24 reads it (measured
+/// 1 October 2026 for where-are-the-regions): the 14 names and the Windows spellings the widths accept
+/// (ArialMT, Arial,Bold, TimesNewRomanPS-ItalicMT, CourierNewPSMT...), and Helvetica or Courier with a
+/// comma style (Helvetica,Bold). Not Helvetica-Narrow, Courier-New, ArialNarrow or Arial-Black.
+fn std_name(base: &str) -> Option<&'static str> {
+    let bare = base.rsplit('+').next().unwrap_or(base);
+    for fam in ["Helvetica", "Courier"] {
+        if let Some(style) = bare.strip_prefix(fam).and_then(|s| s.strip_prefix(',')) {
+            let style = match style { "Bold" => "-Bold", "Italic" => "-Oblique", "BoldItalic" => "-BoldOblique", _ => return None };
+            let name = format!("{fam}{style}");
+            return tables::STANDARD_BOXES.iter().find(|(k, _)| *k == name).map(|(k, _)| *k);
+        }
+    }
+    let key = tables::STANDARD_WIDTHS[std_key(base)?].0;
+    Some(match key {
+        "Arial" => "Helvetica", "Arial,Bold" => "Helvetica-Bold", "Arial,Italic" => "Helvetica-Oblique", "Arial,BoldItalic" => "Helvetica-BoldOblique",
+        "CourierNew" => "Courier", "CourierNew,Bold" => "Courier-Bold", "CourierNew,Italic" => "Courier-Oblique", "CourierNew,BoldItalic" => "Courier-BoldOblique",
+        "TimesNewRoman" => "Times-Roman", "TimesNewRoman,Bold" => "Times-Bold", "TimesNewRoman,Italic" => "Times-Italic", "TimesNewRoman,BoldItalic" => "Times-BoldItalic",
+        k => k,
+    })
+}
+
+/// The standard font MuPDF draws in place of one that isn't embedded and isn't a standard name: Courier
+/// for the FixedPitch flag (1), Times for Serif (2), Helvetica otherwise; bold when the name says Bold or
+/// ForceBold (1 << 18) is set, italic for the Italic flag (64) or Italic or Oblique in the name.
+fn substitute(base: &str, flags: u32) -> &'static str {
+    let bold = base.contains("Bold") || flags & (1 << 18) != 0;
+    let italic = flags & 64 != 0 || base.contains("Italic") || base.contains("Oblique");
+    let fam = if flags & 1 != 0 { 0 } else if flags & 2 != 0 { 1 } else { 2 };
+    let names = [["Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique"],
+                 ["Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic"],
+                 ["Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique"]];
+    names[fam][bold as usize + 2 * italic as usize]
 }
 
 fn load_vertical(pdf: &Pdf, fd: Option<&[u8]>, m: &mut Metrics) {
@@ -214,6 +258,50 @@ trailer << >>
         let f = super::Font::load(&doc, &doc.dict(1).unwrap());
         let b = f.outline_box(65).unwrap();
         assert!((b[0] + 0.1).abs() < 1e-9 && (b[1] + 0.05).abs() < 1e-9 && (b[2] - 0.7).abs() < 1e-9 && (b[3] - 0.9).abs() < 1e-9, "{b:?}");
+    }
+
+    fn simple_font(dict: &str) -> super::Font {
+        let pdf = format!("%PDF-1.4
+1 0 obj {dict} endobj
+trailer << >>
+%%EOF
+");
+        let doc = crate::Pdf::index(pdf.as_bytes());
+        let d = doc.dict(1).unwrap();
+        super::Font::load(&doc, &d)
+    }
+
+    fn near4(b: [f64; 4], e: [f64; 4]) -> bool { b.iter().zip(e).all(|(x, y)| (x - y).abs() < 1e-9) }
+
+    #[test]
+    fn a_font_that_isnt_embedded_gets_its_standard_glyph_boxes() {
+        // Times-Italic f, Adobe's AFM: B -147 -207 424 678, well past its 278 advance
+        let f = simple_font("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic >>");
+        assert!(near4(f.outline_box(0x66).unwrap(), [-0.147, -0.207, 0.424, 0.678]));
+        // a standard alias isn't stretched to its width: Arial-BoldMT H is Helvetica-Bold's (B 71 0 651 718)
+        let f = simple_font("<< /Type /Font /Subtype /TrueType /BaseFont /Arial-BoldMT /FirstChar 72 /LastChar 72 /Widths [900] /Encoding /WinAnsiEncoding >>");
+        assert!(near4(f.outline_box(0x48).unwrap(), [0.071, 0.0, 0.651, 0.718]));
+        // a substitute is: GillSans-Bold G drawn as Helvetica-Bold G (778 wide, B 44 -19 713 737) stretched to 900
+        let f = simple_font("<< /Type /Font /Subtype /Type1 /BaseFont /GillSans-Bold /FirstChar 71 /LastChar 71 /Widths [900] /FontDescriptor << /Flags 32 >> >>");
+        let k = 900.0 / 778.0;
+        assert!(near4(f.outline_box(0x47).unwrap(), [0.044 * k, -0.019, 0.713 * k, 0.737]));
+    }
+
+    #[test]
+    fn substitutes_follow_the_flags_and_the_name() {
+        assert_eq!(super::std_name("TimesNewRomanPS-ItalicMT"), Some("Times-Italic"));
+        assert_eq!(super::std_name("Arial,Bold"), Some("Helvetica-Bold"));
+        // Arial,BoldItalic has the same widths as Arial,Bold; it is still the bold oblique (003975)
+        assert_eq!(super::std_name("Arial-BoldItalicMT"), Some("Helvetica-BoldOblique"));
+        assert_eq!(super::std_name("TimesNewRoman,BoldItalic"), Some("Times-BoldItalic"));
+        assert_eq!(super::std_name("Helvetica,BoldItalic"), Some("Helvetica-BoldOblique"));
+        assert_eq!(super::std_name("CourierNewPSMT"), Some("Courier"));
+        assert_eq!(super::std_name("Helvetica-Narrow"), None);
+        assert_eq!(super::std_name("Arial-Black"), None);
+        assert_eq!(super::substitute("FrizQuadrataITCbyBT-Roman", 34), "Times-Roman");
+        assert_eq!(super::substitute("BankGothicBold", 32), "Helvetica-Bold");
+        assert_eq!(super::substitute("Letter Gothic", 33), "Courier");
+        assert_eq!(super::substitute("GillSans-LightItalic", 96), "Helvetica-Oblique");
     }
 
     #[test]
@@ -450,7 +538,7 @@ impl Font {
         };
         let mut f = Font { base, kind, encoding: String::new(), embedded: false, to_unicode, simple: None, spaces: Vec::new(),
                            code_len: 1, cid_map: None, cid_program: None, metrics: Metrics::default(),
-                           outlines: None, symbolic: false, has_encoding: false, cid_gids: None, ink: RefCell::new(HashMap::new()) };
+                           outlines: None, symbolic: false, has_encoding: false, cid_gids: None, ink: RefCell::new(HashMap::new()), afm: None };
         if kind == Kind::Type0 { f.load_type0(pdf, dict); } else { f.load_simple(pdf, dict); f.load_simple_metrics(pdf, dict); }
         f
     }
@@ -476,6 +564,13 @@ impl Font {
                 if m.std.is_some() || m.by_code.is_some() { m.source = "standard font"; }
             }
             load_vertical(pdf, fd.as_deref(), m);
+            if !self.embedded && matches!(self.kind, Kind::Type1 | Kind::TrueType) {
+                let flags = fd.as_ref().and_then(|d| number(pdf, get(d, b"/Flags"))).unwrap_or(0.0) as u32;
+                let (name, stretch) = match std_name(&self.base) { Some(n) => (n, false), None => (substitute(&self.base, flags), true) };
+                let boxes = tables::STANDARD_BOXES.binary_search_by(|(k, _)| k.cmp(&name)).ok().map(|i| tables::STANDARD_BOXES[i].1);
+                let widths = tables::STANDARD_WIDTHS.binary_search_by(|(k, _)| k.cmp(&name)).ok().map(|i| tables::STANDARD_WIDTHS[i].1);
+                if let (Some(b), Some(w)) = (boxes, widths) { self.afm = Some((b, w, stretch)); }
+            }
         }
     }
 
@@ -511,7 +606,7 @@ impl Font {
     /// reaches its glyph by the encoding's glyph name (through its Unicode), or for a symbolic font with no
     /// /Encoding by the code itself (ISO 32000-1 9.6.6.4); a Type0 font's through its CID.
     pub fn outline_box(&self, code: u32) -> Option<[f64; 4]> {
-        let o = self.outlines.as_ref()?;
+        let Some(o) = self.outlines.as_ref() else { return self.afm_box(code) };
         if let Some(b) = self.ink.borrow().get(&code) { return *b; }
         let gid = if self.kind == Kind::Type0 {
             let cid = match &self.cid_map { Some(c) => c.cid(code).unwrap_or(code), None => code };
@@ -525,6 +620,24 @@ impl Font {
         let b = gid.filter(|&g| g != 0).and_then(|g| o.bounds(g)).map(|b| [b[0] * fm[0], b[1] * fm[3], b[2] * fm[0], b[3] * fm[3]]);
         self.ink.borrow_mut().insert(code, b);
         b
+    }
+
+    /// For a font that isn't embedded, the glyph's box in the standard font MuPDF draws instead (Adobe's
+    /// AFM box), found by the encoding's character; a substitute is stretched along x to the file's
+    /// width, as MuPDF does, a standard name isn't. In text space per unit font size.
+    fn afm_box(&self, code: u32) -> Option<[f64; 4]> {
+        let (boxes, widths, stretch) = self.afm?;
+        let text = self.simple.as_ref().and_then(|t| t.get(code as usize).cloned().flatten()).or_else(|| self.unicode(code))?;
+        let c = text.chars().next()?;
+        let b = boxes[boxes.binary_search_by_key(&c, |e| e.0).ok()?].1;
+        let mut k = 1.0;
+        if stretch {
+            let own = widths.binary_search_by_key(&c, |e| e.0).ok().map(|i| widths[i].1 as f64).unwrap_or(0.0);
+            let file = self.advance(code) / self.metrics.fm[0];
+            if own > 0.0 && file > 0.0 { k = file / own; }
+        }
+        let (xa, xb) = (b[0] as f64 * k, b[2] as f64 * k);
+        Some([xa.min(xb) * 0.001, b[1] as f64 * 0.001, xa.max(xb) * 0.001, b[3] as f64 * 0.001])
     }
 
     /// The font's descent and ascent in text space, per unit font size.
