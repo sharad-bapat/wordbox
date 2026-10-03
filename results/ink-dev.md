@@ -24,3 +24,15 @@ extractor/src/outline.rs reads glyph outlines with ttf-parser 0.25.1 (FontFile2,
 | where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
 
 wordbox covers less than the reference on 50 pages (186 before). The worst three are the Type 3 pages above, which this change doesn't touch. The WebAssembly build goes from 382 KB to 441 KB (158 KB to 182 KB gzipped).
+
+## Outlines from Type 1 programs, and a CFF fallback (3 October 2026)
+
+extractor/src/type1.rs reads embedded Type 1 programs (FontFile: eexec, Subrs and CharStrings, Adobe Type 1 Font Format 1.1), and extractor/src/cff.rs boxes CFF glyphs that ttf-parser rejects because they use the deprecated dotsection operator (12 0), which Adobe's Type 2 Charstring Format says to treat as a no-op. Both are ported from where-are-the-regions. Every other field is still unchanged on all 659 dev files; Type 1 programs add 21,136 words with an ink box and the CFF fallback 1,030, for 238,263 in all.
+
+| Boxes | Pages at 100% | At 99.9% or more | Median | Worst |
+|---|---|---|---|---|
+| wordbox, embedded TrueType and CFF | 925 | 976 | 100.00% | 85.19% |
+| wordbox, plus Type 1 and the CFF fallback | 942 | 976 | 100.00% | 85.19% |
+| where-are-the-regions | 974 | 979 | 100.00% | 99.98% |
+
+wordbox covers less than the reference on 32 pages (50 before). The WebAssembly build is now 466 KB (192 KB gzipped).

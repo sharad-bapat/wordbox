@@ -118,12 +118,30 @@ impl Outlines {
         } else {
             Face::parse(&self.data, 0).ok().and_then(|f| f.outline_glyph(GlyphId(gid), &mut Sink))
         };
+        let units = r.map(|r| [r.x_min as f64, r.y_min as f64, r.x_max as f64, r.y_max as f64]).or_else(|| {
+            // a CFF glyph ttf-parser won't outline (dotsection): our own Type 2 reader
+            if self.cff { return crate::cff::bounds(&self.data, gid); }
+            let f = Face::parse(&self.data, 0).ok()?;
+            crate::cff::bounds(f.raw_face().table(ttf_parser::Tag::from_bytes(b"CFF "))?, gid)
+        });
         let (sx, sy) = self.scale;
-        let b = r.filter(|r| r.x_max > r.x_min || r.y_max > r.y_min).map(|r| {
-            let (xa, xb, ya, yb) = (r.x_min as f64 * sx, r.x_max as f64 * sx, r.y_min as f64 * sy, r.y_max as f64 * sy);
+        let b = units.filter(|r| r[2] > r[0] || r[3] > r[1]).map(|r| {
+            let (xa, xb, ya, yb) = (r[0] * sx, r[2] * sx, r[1] * sy, r[3] * sy);
             [xa.min(xb), ya.min(yb), xa.max(xb), ya.max(yb)]
         });
         self.cache.borrow_mut().insert(gid, b);
         b
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    pub(crate) struct NoPen;
+    impl ttf_parser::OutlineBuilder for NoPen {
+        fn move_to(&mut self, _: f32, _: f32) {}
+        fn line_to(&mut self, _: f32, _: f32) {}
+        fn quad_to(&mut self, _: f32, _: f32, _: f32, _: f32) {}
+        fn curve_to(&mut self, _: f32, _: f32, _: f32, _: f32, _: f32, _: f32) {}
+        fn close(&mut self) {}
     }
 }

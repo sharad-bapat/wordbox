@@ -8,6 +8,7 @@
 //! so the two tools stay independent.
 use std::collections::HashMap;
 
+mod cff;
 mod cmap;
 mod crypt;
 mod font;
