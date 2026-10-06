@@ -15,8 +15,6 @@ path = "src/main.rs"
 [dependencies]
 # The PDF reading shared with scan-or-text and where-are-the-regions.
 pdf-core = { path = "../../pdf-core" }
-# Glyph outlines from embedded TrueType and CFF programs, for ink boxes. Pinned, as in where-are-the-regions.
-ttf-parser = { version = "0.25.1", default-features = false, features = ["std", "glyph-names"] }
 wasm-bindgen = { version = "0.2", optional = true }
 
 [features]

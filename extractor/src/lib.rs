@@ -8,20 +8,14 @@
 //! so the two tools stay independent.
 use std::collections::HashMap;
 
-mod cff;
-mod cmap;
-mod font;
-mod outline;
-mod tables;
-mod truetype;
-mod type1;
 
 pub use font::Kind;
 
 const MAX_FORM_DEPTH: usize = 8;
 
 // The PDF reading itself (byte helpers, values, filters, the object index, decryption, the page
-// tree) is pdf-core's, shared with scan-or-text and where-are-the-regions.
+// tree, and the fonts: programs, encodings, CMaps, glyph outlines) is pdf-core's, shared with
+// scan-or-text and where-are-the-regions.
 pub(crate) use pdf_core::*;
 
 // ---------- the content-stream interpreter ----------

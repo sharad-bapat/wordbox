@@ -136,6 +136,7 @@ dependencies = [
  "aes",
  "md-5",
  "miniz_oxide",
+ "ttf-parser",
 ]
 
 [[package]]
@@ -247,6 +248,5 @@ name = "wordbox"
 version = "0.1.0"
 dependencies = [
  "pdf-core",
- "ttf-parser",
  "wasm-bindgen",
 ]

@@ -49,3 +49,23 @@ wordbox skipped an inline image's data up to the first EI with whitespace before
 ## Widths by the glyph, not by ToUnicode (3 October 2026)
 
 A standard font with no /Widths had its built-in widths looked up by the character ToUnicode gives, so a ToUnicode map that says something else (a garbled layer that sends every code to private use) gave the drawn glyphs no width. A width belongs to the glyph the encoding names; extractor/src/font.rs now looks it up by that, falling back to ToUnicode only where the encoding gives nothing, for the standard widths and for the Symbol and ZapfDingbats widths by glyph. Found while building the constructed set for what-needs-ocr; the same change went into where-are-the-regions, where it moved the right edges of one govdocs1 file's soft-hyphenated words nearer PyMuPDF's. A unit test covers it. Old and new output are identical on all 659 dev and 242 held-out files, so tools/score.py's numbers don't change.
+
+## Fonts from pdf-core, with Adobe's heights for the standard fonts (6 October 2026)
+
+The font code (font programs, encodings, CMaps, glyph outlines and the tables generated for them) moved to [pdf-core](https://github.com/sharad-bapat/pdf-core), shared with where-are-the-regions, and the copy kept was where-are-the-regions'. It had one fix this one didn't: a font with no font descriptor took a default height of 0.8 em above the baseline and 0.2 em below, and now, when its name is Courier, Helvetica, Arial or Times, it takes Adobe's ascender and descender instead (Courier 629 and -157, Helvetica and Arial 718 and -207, Times 683 and -217, in thousandths of an em). Nothing else in the two copies differed except comments, tests and where-are-the-regions' CCITT tables.
+
+Old and new output on the 659 dev, 242 held-out and 240 garble files, word by word (`--glyphs`, streamed one file at a time): 120 of the 1,141 files change, 921,051 of 5,907,073 words. Every changed word is in a font with no font descriptor (so not embedded), mostly Times-Roman (550,902), Helvetica (125,505) and Helvetica-Bold (69,472). The top of the box moves down, by 1.2 pt in 241,053 words and between 0.5 and 1.4 pt in most of the rest, and the bottom moves by 0.1 to 0.6 pt, down for Helvetica and Times and up for Courier. 287,752 words gain an `ink` box, where capitals and accents now reach above the tighter box. 701 words change `x0` and 1,484 change `x1`: they're printed turned a quarter (001043 p1 "GENERIC" in Helvetica-Bold, 12 pt wide in x), so their height runs along x. No page verdict and no word count changes.
+
+tools/score.py, same reference and garble sets, before (the committed wordbox, 4561c1d) and after:
+
+| | Before | After |
+|---|---|---|
+| Dev: reference words found | 3,264,922 of 3,267,791 (99.91%) | 3,264,923 |
+| Dev: x0, x1, baseline within 1 pt | 100.00%, 100.00%, 100.00% | unchanged |
+| Dev: pages with at least 99% found | 97.48% of 9,567 | unchanged |
+| Held-out: reference words found | 1,722,582 of 1,730,015 (99.57%) | unchanged |
+| Held-out: x0, x1, baseline within 1 pt | 99.98%, 99.96%, 99.86% | unchanged |
+| Held-out: pages with at least 99% found | 94.43% of 6,107 | unchanged |
+| Verdicts, garble sets and real files | | unchanged |
+
+The scorer checks the left and right edges and the baseline, which didn't move; the one extra dev word is a match the vertical-overlap test now finds. The ink test (tools/ink_check.py, which renders pages) wasn't rerun, so the coverage figures in ink-dev.md are from before this change.
