@@ -18,10 +18,12 @@ next to text. Both maps share the same non-text regions, so any difference betwe
 comes from the word boxes.
 
 usage:
-  python tools/ink_check.py <list.txt> [--every=N] [--regions=<regions-cli>] [--worst=N] [--out=file.jsonl]
+  python tools/ink_check.py <list.txt> [--every=N] [--regions=<regions-cli>] [--worst=N] [--out=file.jsonl] [--summary=file.txt]
 
 --every=N takes every Nth page of the list's files, in order (default 10). The held-out list is
-refused unless tools/check_frozen.py passes.
+refused unless tools/check_frozen.py passes. A progress bar counts the pages, with the running count
+of pages at 100% and under 99.9%. --out writes one JSON line per page; the summary printed at the end
+is also written to --summary, or next to --out with a .txt ending.
 """
 import json
 import statistics
@@ -32,7 +34,7 @@ from pathlib import Path
 
 import fitz
 import numpy as np
-from rich.progress import MofNCompleteColumn, Progress, TimeElapsedColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 
 ROOT = Path(__file__).resolve().parent.parent
 CLI = ROOT / "extractor" / "target" / "release" / "wordbox-cli.exe"
@@ -139,49 +141,79 @@ def main():
     regions = Path(opt.get("regions", REGIONS))
     files = [l.strip() for l in open(args[0], encoding="utf-8") if l.strip()]
 
-    rows, k = [], 0
-    bar = Progress(*Progress.get_default_columns(), TimeElapsedColumn(), MofNCompleteColumn(), transient=True)
-    task = bar.add_task("ink test", total=len(files))
-    bar.start()
+    # the pages to check, counted first so the bar can show them: every Nth page across the list
+    counts = []
     for f in files:
-        bar.advance(task)
-        d = None
-        with fitz.open(f) as doc:
-            for pno in range(doc.page_count):
-                k += 1
-                if (k - 1) % every:
-                    continue
-                if d is None:
-                    d, r = run(CLI, f), run(regions, f)
-                name = Path(f).name
-                if d.get("status") != "ok" or r.get("status") not in (None, "ok") or pno >= len(d["pages"]) or pno >= len(r["pages"]):
-                    rows.append({"file": name, "page": pno, "error": d.get("status") if d.get("status") != "ok" else r.get("status") or "pages"})
-                    continue
-                rows.append({"file": name, "page": pno, **check(doc[pno], d["pages"][pno], r["pages"][pno])})
-    bar.stop()
+        try:
+            with fitz.open(f) as doc:
+                counts.append(doc.page_count)
+        except Exception:
+            counts.append(0)
+    k_total = sum(counts)
+    todo = sum(1 for i in range(k_total) if i % every == 0)
+
+    rows, k = [], 0
+    tally = Counter()
+    bar = Progress(TextColumn("ink test"), BarColumn(), MofNCompleteColumn(), TextColumn("pages"), TimeElapsedColumn(),
+                   TimeRemainingColumn(), TextColumn("100%: {task.fields[full]}  under 99.9%: {task.fields[low]}  errors: {task.fields[err]}  {task.fields[file]}"))
+    task = bar.add_task("", total=todo, full=0, low=0, err=0, file="")
+    with bar:
+        for f, n_pages in zip(files, counts):
+            name = Path(f).name
+            bar.update(task, file=name[:40])
+            d = None
+            try:
+                doc = fitz.open(f)
+            except Exception as e:
+                for pno in range(n_pages):
+                    k += 1
+                continue
+            with doc:
+                for pno in range(doc.page_count):
+                    k += 1
+                    if (k - 1) % every:
+                        continue
+                    if d is None:
+                        d, r = run(CLI, f), run(regions, f)
+                    if d.get("status") != "ok" or r.get("status") not in (None, "ok") or pno >= len(d["pages"]) or pno >= len(r["pages"]):
+                        rows.append({"file": name, "page": pno, "error": d.get("status") if d.get("status") != "ok" else r.get("status") or "pages"})
+                        tally["err"] += 1
+                    else:
+                        row = {"file": name, "page": pno, **check(doc[pno], d["pages"][pno], r["pages"][pno])}
+                        rows.append(row)
+                        tally["full"] += row["coverage"] == 1
+                        tally["low"] += row["coverage"] < 0.999
+                    bar.update(task, advance=1, full=tally["full"], low=tally["low"], err=tally["err"])
 
     ok = [r for r in rows if "error" not in r]
-    print(f"{len(rows)} pages (every {every}th of {k}), {len(rows) - len(ok)} errors, {DPI} dpi, ink < {INK_LEVEL}, margin {MARGIN_PT} pt")
-    print(f"{'boxes':<9} {'100%':>6} {'>=99.9%':>8} {'>=99.5%':>8}   median  worst")
+    out = []
+    say = out.append
+    say(f"{Path(args[0]).name}: {len(rows)} pages (every {every}th of {k}), {len(rows) - len(ok)} errors, {DPI} dpi, ink < {INK_LEVEL}, margin {MARGIN_PT} pt")
+    say(f"{'boxes':<9} {'100%':>6} {'>=99.9%':>8} {'>=99.5%':>8}   median  worst")
     for label, key in (("wordbox", "coverage"), ("regions", "ref")):
         c = [r[key] for r in ok]
-        print(f"{label:<9} {sum(x == 1 for x in c):>6} {sum(x >= 0.999 for x in c):>8} {sum(x >= 0.995 for x in c):>8}"
-              f"   {100 * statistics.median(c):6.2f}%  {100 * min(c):6.2f}%")
+        say(f"{label:<9} {sum(x == 1 for x in c):>6} {sum(x >= 0.999 for x in c):>8} {sum(x >= 0.995 for x in c):>8}"
+            f"   {100 * statistics.median(c):6.2f}%  {100 * min(c):6.2f}%")
     ink = sum(r["ink"] for r in ok)
     miss = Counter()
     for r in ok:
         miss.update(r["missed"])
-    print(f"missed ink with wordbox's words, share of all ink ({ink} px): " + ", ".join(f"{k} {100 * miss[k] / max(ink, 1):.3f}%" for k in KINDS))
-    print(f"pages where wordbox covers less than regions: {sum(1 for r in ok if r['coverage'] < r['ref'] - 1e-9)}, more: {sum(1 for r in ok if r['coverage'] > r['ref'] + 1e-9)}")
-    print(f"words with an ink box: {sum(r['ink_boxes'] for r in ok)}")
-    print(f"worst {worst}:")
+    say(f"missed ink with wordbox's words, share of all ink ({ink} px): " + ", ".join(f"{k} {100 * miss[k] / max(ink, 1):.3f}%" for k in KINDS))
+    say(f"pages where wordbox covers less than regions: {sum(1 for r in ok if r['coverage'] < r['ref'] - 1e-9)}, more: {sum(1 for r in ok if r['coverage'] > r['ref'] + 1e-9)}")
+    say(f"words with an ink box: {sum(r['ink_boxes'] for r in ok)}")
+    say(f"worst {worst}:")
     for r in sorted(ok, key=lambda r: r["coverage"])[:worst]:
-        print(f"  {r['file']} p{r['page']} {100 * r['coverage']:.2f}% (regions {100 * r['ref']:.2f}%) missed {r['missed']}")
+        say(f"  {r['file']} p{r['page']} {100 * r['coverage']:.2f}% (regions {100 * r['ref']:.2f}%) missed {r['missed']}")
     for r in rows:
         if "error" in r:
-            print(f"  error {r['file']} p{r['page']}: {r['error']}")
+            say(f"  error {r['file']} p{r['page']}: {r['error']}")
+    print("\n".join(out))
     if "out" in opt:
         Path(opt["out"]).write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    summary = opt.get("summary") or (str(Path(opt["out"]).with_suffix(".txt")) if "out" in opt else None)
+    if summary:
+        Path(summary).write_text("\n".join(out) + "\n", encoding="utf-8")
+        print(f"summary written to {summary}")
 
 
 if __name__ == "__main__":
