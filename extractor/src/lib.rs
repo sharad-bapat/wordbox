@@ -21,7 +21,7 @@ pub use font::Kind;
 const MAX_FORM_DEPTH: usize = 8;
 
 // The PDF reading itself (byte helpers, values, filters, the object index, decryption, the page
-// tree) is pdf-core's, shared with scan-or-text and where-are-the-regions (D4).
+// tree) is pdf-core's, shared with scan-or-text and where-are-the-regions.
 pub(crate) use pdf_core::*;
 
 // ---------- the content-stream interpreter ----------

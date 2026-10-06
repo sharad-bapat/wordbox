@@ -1,8 +1,8 @@
 """Check the frozen source: every file in results/frozen.sha256 must hash as recorded.
 
 Line endings are normalised to LF first, so a checkout that converts them doesn't count as a change.
-Since 6 October 2026 the PDF reading is pdf-core's (a path dependency, D4): its commit is recorded
-too, and it must be at that commit with nothing changed.
+Since 6 October 2026 the PDF reading is pdf-core's (github.com/sharad-bapat/pdf-core, a path
+dependency): its commit is recorded too, and it must be at that commit with nothing changed.
 Run before any held-out evaluation. Exits 1 on any mismatch.
 
 usage: python tools/check_frozen.py            check

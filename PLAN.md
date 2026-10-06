@@ -47,7 +47,7 @@ Chunk 3 checks against PyMuPDF on every fifth dev file (results/chunk3-geometry-
 
 ## How it works
 
-It started from a copy of scan-or-text's parser (object index, page tree, decryption, stream filters, content-stream interpreter). Since 6 October 2026 that parser is the shared pdf-core crate instead of a copy, with the same output on every test file. New parts:
+It started from a copy of scan-or-text's parser (object index, page tree, decryption, stream filters, content-stream interpreter). Since 6 October 2026 that parser is the shared pdf-core crate instead of a copy. The words and glyphs came out the same before and after on the 659 dev, 242 held-out and 240 garble files, and on the 1,113 test files of where-are-the-regions. New parts:
 
 1. Fonts and decoding (done, chunk 2). A code's text is looked up in a fixed order:
    1. the font's ToUnicode CMap;
