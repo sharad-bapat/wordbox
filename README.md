@@ -45,7 +45,7 @@ The rules were tuned on 659 files (ContractNLI's 375 source PDFs and 284 from go
 - The WebAssembly build is 521 KB (219 KB gzipped) with the ink boxes. That's over the 250 KB target in the plan.
 - Output is byte-identical across runs.
 
-Changes made after the held-out run are measured the same way in `results/after-heldout.md`: the /Descent sign, the Symbol and ZapfDingbats encodings, inline ASCII85 images, and the move to pdf-core's fonts, which gave standard fonts with no descriptor Adobe's heights instead of a default and changed none of the scores above. The ink boxes came last. On every 10th page, rendered with PyMuPDF, the word boxes with their ink boxes cover all the text ink on 974 of 979 dev pages and 663 of 666 held-out pages, the same as where-are-the-regions; the typographic boxes alone covered 790 of the 979 dev pages (`results/ink-dev.md`). The speeds above, and the ink coverage, were measured before the move to pdf-core's fonts.
+Changes made after the held-out run are measured the same way in `results/after-heldout.md`: the /Descent sign, the Symbol and ZapfDingbats encodings, inline ASCII85 images, and the move to pdf-core's fonts, which gave standard fonts with no descriptor Adobe's heights instead of a default and changed none of the scores above. The ink boxes came last. On every 10th page, rendered with PyMuPDF, the word boxes with their ink boxes cover all the text ink on 974 of 979 dev pages and 663 of 666 held-out pages, the same as where-are-the-regions; the typographic boxes alone covered 790 of the 979 dev pages (`results/ink-dev.md`). The ink coverage is the same on pdf-core's fonts. The speeds above were measured before the move.
 
 ## Limits
 

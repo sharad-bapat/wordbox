@@ -1,0 +1,18 @@
+heldout.txt: 666 pages (every 10th of 6655), 0 errors, 150 dpi, ink < 250, margin 1.0 pt
+boxes       100%  >=99.9%  >=99.5%   median  worst
+wordbox      663      664      666   100.00%   99.88%
+regions      663      664      666   100.00%   99.88%
+missed ink with wordbox's words, share of all ink (150618729 px): text 0.000%, image 0.000%, vector 0.000%, annot 0.000%, other 0.000%
+pages where wordbox covers less than regions: 0, more: 0
+words with an ink box: 26946
+worst 10:
+  g002912.pdf p60 99.88% (regions 99.88%) missed {'text': 0, 'image': 0, 'vector': 0, 'annot': 0, 'other': 200}
+  g002708.pdf p1 99.89% (regions 99.89%) missed {'text': 280, 'image': 0, 'vector': 0, 'annot': 0, 'other': 0}
+  g002250.pdf p1 99.99% (regions 99.99%) missed {'text': 0, 'image': 0, 'vector': 0, 'annot': 0, 'other': 13}
+  g002014.pdf p0 100.00% (regions 100.00%) missed {}
+  g002014.pdf p10 100.00% (regions 100.00%) missed {}
+  g002014.pdf p20 100.00% (regions 100.00%) missed {}
+  g002014.pdf p30 100.00% (regions 100.00%) missed {}
+  g002014.pdf p40 100.00% (regions 100.00%) missed {}
+  g002014.pdf p50 100.00% (regions 100.00%) missed {}
+  g002014.pdf p60 100.00% (regions 100.00%) missed {}

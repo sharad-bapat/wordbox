@@ -141,6 +141,10 @@ def main():
     regions = Path(opt.get("regions", REGIONS))
     files = [l.strip() for l in open(args[0], encoding="utf-8") if l.strip()]
 
+    # MuPDF's own warnings (a layer config it can't find, a broken colour profile) would break up the
+    # progress bar; they're collected and counted in the summary instead
+    fitz.TOOLS.mupdf_display_errors(False)
+    fitz.TOOLS.mupdf_warnings(reset=True)
     # the pages to check, counted first so the bar can show them: every Nth page across the list
     counts = []
     for f in files:
@@ -201,6 +205,8 @@ def main():
     say(f"missed ink with wordbox's words, share of all ink ({ink} px): " + ", ".join(f"{k} {100 * miss[k] / max(ink, 1):.3f}%" for k in KINDS))
     say(f"pages where wordbox covers less than regions: {sum(1 for r in ok if r['coverage'] < r['ref'] - 1e-9)}, more: {sum(1 for r in ok if r['coverage'] > r['ref'] + 1e-9)}")
     say(f"words with an ink box: {sum(r['ink_boxes'] for r in ok)}")
+    warns = [w for w in fitz.TOOLS.mupdf_warnings().splitlines() if w.strip()]
+    say(f"MuPDF warnings while rendering (not errors): {len(warns)}" + ("; " + ", ".join(f"{w} x{n}" for w, n in Counter(warns).most_common(3)) if warns else ""))
     say(f"worst {worst}:")
     for r in sorted(ok, key=lambda r: r["coverage"])[:worst]:
         say(f"  {r['file']} p{r['page']} {100 * r['coverage']:.2f}% (regions {100 * r['ref']:.2f}%) missed {r['missed']}")

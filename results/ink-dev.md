@@ -73,3 +73,18 @@ The same test on every 10th page of the 242 held-out files (govdocs1 thread 002)
 | where-are-the-regions | 663 | 664 | 100.00% | 99.88% |
 
 wordbox covers less than the reference on no page and more on none; 32,505 words on these pages have an ink box. The three pages under 100% miss the same ink with both maps.
+
+## On pdf-core's fonts (6 October 2026, wordbox 8dee8e8)
+
+The same test after the move to pdf-core's fonts (pdf-core 2e1f604), on every 10th page of the dev and held-out files. Saved as ink-dev-6 and ink-heldout-fonts, each with a .txt summary. 979 dev pages and 666 held-out pages, 0 errors.
+
+| Pages | Pages at 100% | At 99.9% or more | Median | Worst |
+|---|---|---|---|---|
+| dev, before the move | 974 | 979 | 100.00% | 99.98% |
+| dev, on pdf-core | 974 | 979 | 100.00% | 99.98% |
+| held-out, before the move | 663 | 664 | 100.00% | 99.88% |
+| held-out, on pdf-core | 663 | 664 | 100.00% | 99.88% |
+
+Coverage is unchanged, and still the same as where-are-the-regions on every page: wordbox covers less than the reference on no page and more on none. Fewer words carry an ink box, 45,532 on the dev pages against 49,138 before, and 26,946 on the held-out pages against 32,505. The move also changed the height of 921,051 word boxes (after-heldout.md).
+
+ink_check.py now hides MuPDF's warnings while it renders and counts them in the summary instead.

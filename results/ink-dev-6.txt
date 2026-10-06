@@ -1,0 +1,18 @@
+dev.txt: 979 pages (every 10th of 9782), 0 errors, 150 dpi, ink < 250, margin 1.0 pt
+boxes       100%  >=99.9%  >=99.5%   median  worst
+wordbox      974      979      979   100.00%   99.98%
+regions      974      979      979   100.00%   99.98%
+missed ink with wordbox's words, share of all ink (244105864 px): text 0.000%, image 0.000%, vector 0.000%, annot 0.000%, other 0.000%
+pages where wordbox covers less than regions: 0, more: 0
+words with an ink box: 45532
+worst 10:
+  001150.pdf p0 99.98% (regions 99.98%) missed {'text': 63, 'image': 0, 'vector': 0, 'annot': 0, 'other': 0}
+  001869.pdf p33 99.98% (regions 99.98%) missed {'text': 0, 'image': 0, 'vector': 120, 'annot': 0, 'other': 0}
+  001506.pdf p5 99.99% (regions 99.99%) missed {'text': 17, 'image': 0, 'vector': 0, 'annot': 0, 'other': 0}
+  sample_nda.pdf p3 100.00% (regions 100.00%) missed {'text': 0, 'image': 0, 'vector': 0, 'annot': 0, 'other': 3}
+  001378.pdf p64 100.00% (regions 100.00%) missed {'text': 0, 'image': 0, 'vector': 0, 'annot': 0, 'other': 2}
+  01_Bosch-Automotive-Service-Solutions-Mutual-Non-Disclosure-Agreement-7-12-17.pdf p0 100.00% (regions 100.00%) missed {}
+  09-24-2019-04-25-05-3914910473.pdf p0 100.00% (regions 100.00%) missed {}
+  130806ca141.pdf p2 100.00% (regions 100.00%) missed {}
+  1438076025NDA_28072015%20-%20AHPL.pdf p5 100.00% (regions 100.00%) missed {}
+  1588052992CCTV%20Non%20Disclosure%20Agreement.pdf p0 100.00% (regions 100.00%) missed {}
