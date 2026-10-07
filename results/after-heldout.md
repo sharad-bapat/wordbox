@@ -69,3 +69,7 @@ tools/score.py, same reference and garble sets, before (the committed wordbox, 4
 | Verdicts, garble sets and real files | | unchanged |
 
 The scorer checks the left and right edges and the baseline, which didn't move; the one extra dev word is a match the vertical-overlap test now finds. The ink test (tools/ink_check.py, which renders pages) wasn't rerun, so the coverage figures in ink-dev.md are from before this change.
+
+## Maths glyph names from pdf-core (7 October 2026)
+
+pdf-core a9328cd gives Unicode to glyph names from TeX's maths fonts that the Adobe Glyph List lacks (prime, epsilon1, every size of the big delimiters and operators such as parenleftbig and summationdisplay), and gives the standard Unicode pieces for the private-use codes Adobe gave large brackets (its README, "Maths glyph names"). I ran wordbox before and after on the 1,113 files of where-are-the-regions' test sets: 1,610 words in 19 files gained text, every one of them unmapped before and mapped now, and no other word, box or page verdict changed. The characters gained are bracket pieces, parentheses, primes, sums, integrals and the like. The scores on the dev and held-out sets weren't rerun; the words that changed had no usable text before.
